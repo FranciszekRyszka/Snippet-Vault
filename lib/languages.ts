@@ -1,0 +1,41 @@
+export const LANGUAGES = [
+  { value: "text", label: "Plain Text" },
+  { value: "markdown", label: "Markdown" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "python", label: "Python" },
+  { value: "java", label: "Java" },
+  { value: "csharp", label: "C#" },
+  { value: "cpp", label: "C++" },
+  { value: "c", label: "C" },
+  { value: "go", label: "Go" },
+  { value: "rust", label: "Rust" },
+  { value: "ruby", label: "Ruby" },
+  { value: "php", label: "PHP" },
+  { value: "swift", label: "Swift" },
+  { value: "kotlin", label: "Kotlin" },
+  { value: "sql", label: "SQL" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+  { value: "scss", label: "SCSS" },
+  { value: "bash", label: "Shell / Bash" },
+  { value: "powershell", label: "PowerShell" },
+  { value: "yaml", label: "YAML" },
+  { value: "json", label: "JSON" },
+  { value: "xml", label: "XML" },
+  { value: "toml", label: "TOML" },
+  { value: "dockerfile", label: "Dockerfile" },
+  { value: "graphql", label: "GraphQL" },
+  { value: "lua", label: "Lua" },
+  { value: "r", label: "R" },
+  { value: "dart", label: "Dart" },
+  { value: "elixir", label: "Elixir" },
+  { value: "haskell", label: "Haskell" },
+  { value: "scala", label: "Scala" },
+  { value: "perl", label: "Perl" },
+] as const;
+
+export function getLanguageLabel(value: string): string {
+  const lang = LANGUAGES.find((l) => l.value === value);
+  return lang ? lang.label : value;
+}
