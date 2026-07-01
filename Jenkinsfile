@@ -1,10 +1,6 @@
 // Self-hosted Jenkins pipeline — builds SnipVault installers for all three
 // desktop platforms in parallel, each on its own labeled agent:
 //
-//   label "windows" -> Windows PC (Ryzen 7 3700X)  -> .msi + .exe
-//   label "macos"   -> MacBook Air M2              -> universal .dmg (Intel + Apple Silicon)
-//   label "linux"   -> Oracle Cloud server         -> .deb / .AppImage / .rpm
-//
 // Each agent needs Node.js >= 22 and Rust (rustup) installed, plus the Tauri
 // system prerequisites for its OS (MSVC Build Tools + WebView2 on Windows;
 // Xcode Command Line Tools on macOS; webkit2gtk + friends on Linux).
