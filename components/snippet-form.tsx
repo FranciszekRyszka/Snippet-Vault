@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
 import type { Snippet } from "@/lib/tauri-api";
@@ -18,6 +18,7 @@ type SnippetFormProps = {
   }) => void;
   onCancel: () => void;
   saving: boolean;
+  allTags?: string[];
 };
 
 export function SnippetForm({
@@ -25,6 +26,7 @@ export function SnippetForm({
   onSave,
   onCancel,
   saving,
+  allTags = [],
 }: SnippetFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -32,6 +34,20 @@ export function SnippetForm({
   const [language, setLanguage] = useState("text");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const suggestionBlurTimeout = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  // Existing tags that match what's being typed and aren't already added
+  const suggestions = useMemo(() => {
+    const query = tagInput.trim().toLowerCase();
+    return allTags
+      .filter((t) => !tags.includes(t))
+      .filter((t) => (query ? t.includes(query) : true))
+      .slice(0, 8);
+  }, [allTags, tags, tagInput]);
 
   useEffect(() => {
     if (snippet) {
@@ -56,6 +72,8 @@ export function SnippetForm({
       setTags([...tags, cleaned]);
     }
     setTagInput("");
+    setShowSuggestions(false);
+    setHighlightedIndex(0);
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -63,11 +81,32 @@ export function SnippetForm({
   };
 
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    const hasSuggestions = showSuggestions && suggestions.length > 0;
+
+    if (e.key === "ArrowDown" && hasSuggestions) {
       e.preventDefault();
-      addTag(tagInput);
+      setHighlightedIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp" && hasSuggestions) {
+      e.preventDefault();
+      setHighlightedIndex(
+        (i) => (i - 1 + suggestions.length) % suggestions.length
+      );
+    } else if (e.key === "Escape" && showSuggestions) {
+      e.preventDefault();
+      setShowSuggestions(false);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // If a suggestion is highlighted, pick it; otherwise use the raw input
+      if (hasSuggestions) {
+        addTag(suggestions[highlightedIndex]);
+      } else {
+        addTag(tagInput);
+      }
     } else if (e.key === "," || e.key === "Tab") {
-      if (tagInput.trim()) {
+      if (hasSuggestions && e.key === "Tab") {
+        e.preventDefault();
+        addTag(suggestions[highlightedIndex]);
+      } else if (tagInput.trim()) {
         e.preventDefault();
         addTag(tagInput);
       }
@@ -180,35 +219,80 @@ export function SnippetForm({
                 (press Enter or comma to add)
               </span>
             </label>
-            <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-lg border border-input bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/20 hover:text-primary"
-                    aria-label={`Remove tag ${tag}`}
+            <div className="relative">
+              <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-lg border border-input bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                   >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-              <input
-                id="snippet-tags"
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                onBlur={() => {
-                  if (tagInput.trim()) addTag(tagInput);
-                }}
-                placeholder={tags.length === 0 ? "e.g. react, hooks, cleanup" : ""}
-                className="min-w-[120px] flex-1 border-none bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/20 hover:text-primary"
+                      aria-label={`Remove tag ${tag}`}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id="snippet-tags"
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setShowSuggestions(true);
+                    setHighlightedIndex(0);
+                  }}
+                  onKeyDown={handleTagKeyDown}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => {
+                    // Delay so a suggestion click registers before the list hides
+                    suggestionBlurTimeout.current = setTimeout(() => {
+                      setShowSuggestions(false);
+                      if (tagInput.trim()) addTag(tagInput);
+                    }, 120);
+                  }}
+                  role="combobox"
+                  aria-expanded={showSuggestions && suggestions.length > 0}
+                  aria-autocomplete="list"
+                  autoComplete="off"
+                  placeholder={
+                    tags.length === 0 ? "e.g. react, hooks, cleanup" : ""
+                  }
+                  className="min-w-[120px] flex-1 border-none bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+              {showSuggestions && suggestions.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-52 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-lg">
+                  {suggestions.map((suggestion, index) => (
+                    <li key={suggestion}>
+                      <button
+                        type="button"
+                        // onMouseDown fires before the input's onBlur, so the
+                        // click is not swallowed by the blur handler
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (suggestionBlurTimeout.current) {
+                            clearTimeout(suggestionBlurTimeout.current);
+                          }
+                          addTag(suggestion);
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        className={`flex w-full items-center px-3 py-1.5 text-left text-sm text-popover-foreground transition-colors ${
+                          index === highlightedIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-accent/50"
+                        }`}
+                      >
+                        {suggestion}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {tags.length >= 20 && (
               <p className="mt-1 text-xs text-muted-foreground">

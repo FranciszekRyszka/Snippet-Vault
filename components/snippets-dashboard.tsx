@@ -215,6 +215,7 @@ export function SnippetsDashboard() {
             setEditingSnippet(null);
           }}
           saving={saving}
+          allTags={allTags}
         />
       )}
 
