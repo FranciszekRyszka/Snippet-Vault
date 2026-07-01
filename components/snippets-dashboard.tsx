@@ -7,12 +7,16 @@ import { SnippetCard } from "./snippet-card";
 import { SnippetForm } from "./snippet-form";
 import { EmptyState } from "./empty-state";
 import { DeleteDialog } from "./delete-dialog";
+import { DbSetupDialog } from "./db-setup-dialog";
+import { SettingsDialog } from "./settings-dialog";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   getSnippets,
   createSnippet,
   updateSnippet,
   deleteSnippet,
+  getInitStatus,
+  isTauri,
   type Snippet,
 } from "@/lib/tauri-api";
 import { Loader2 } from "lucide-react";
@@ -22,6 +26,12 @@ export function SnippetsDashboard() {
   const [allSnippets, setAllSnippets] = useState<Snippet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  // Database readiness (desktop first-run setup). `null` = still checking.
+  const [dbReady, setDbReady] = useState<boolean | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  // Set after mount to avoid hydration mismatch on the desktop-only settings UI.
+  const [desktop, setDesktop] = useState(false);
 
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("");
@@ -72,13 +82,22 @@ export function SnippetsDashboard() {
     }
   }, []);
 
+  // On mount, check whether a database is configured (desktop first-run).
   useEffect(() => {
-    fetchSnippets();
-  }, [fetchSnippets]);
+    setDesktop(isTauri());
+    getInitStatus()
+      .then((status) => setDbReady(status.initialized))
+      .catch(() => setDbReady(false));
+  }, []);
+
+  // Only load snippets once the database is ready.
+  useEffect(() => {
+    if (dbReady) fetchSnippets();
+  }, [dbReady, fetchSnippets]);
 
   useEffect(() => {
-    fetchAllSnippets();
-  }, [fetchAllSnippets]);
+    if (dbReady) fetchAllSnippets();
+  }, [dbReady, fetchAllSnippets]);
 
   // Collect all unique tags from all snippets for the tag cloud
   const allTags = useMemo(() => {
@@ -149,7 +168,10 @@ export function SnippetsDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header onNewSnippet={handleNewSnippet} />
+      <Header
+        onNewSnippet={handleNewSnippet}
+        onOpenSettings={desktop ? () => setShowSettings(true) : undefined}
+      />
 
       <main className="mx-auto max-w-6xl px-4 py-6">
         <div className="mb-6">
@@ -224,6 +246,20 @@ export function SnippetsDashboard() {
           onConfirm={handleDelete}
           onCancel={() => setDeletingId(null)}
           deleting={deleting}
+        />
+      )}
+
+      {dbReady === false && (
+        <DbSetupDialog onComplete={() => setDbReady(true)} />
+      )}
+
+      {showSettings && (
+        <SettingsDialog
+          onClose={() => setShowSettings(false)}
+          onDbChanged={() => {
+            fetchSnippets();
+            fetchAllSnippets();
+          }}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, DatabaseName, Result, params};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use dirs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snippet {
@@ -35,22 +35,22 @@ pub struct UpdateSnippetInput {
 
 pub struct Database {
     conn: Mutex<Connection>,
+    path: PathBuf,
 }
 
 impl Database {
-    pub fn new() -> Result<Self> {
-        let db_path = Self::get_db_path();
-        
+    /// Open (or create) a SnipVault database at the given path.
+    pub fn open(path: &Path) -> Result<Self> {
         // Ensure the parent directory exists
-        if let Some(parent) = std::path::Path::new(&db_path).parent() {
+        if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        
-        let conn = Connection::open(&db_path)?;
-        
+
+        let conn = Connection::open(path)?;
+
         // Enable WAL mode for better concurrency
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
-        
+
         // Initialize the database schema
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS snippets (
@@ -66,19 +66,26 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
             CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);"
         )?;
-        
+
         Ok(Self {
             conn: Mutex::new(conn),
+            path: path.to_path_buf(),
         })
     }
-    
-    fn get_db_path() -> String {
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("snipvault");
-        data_dir.join("snippets.db").to_string_lossy().into_owned()
+
+    /// The filesystem path this database is stored at.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
-    
+
+    /// Write a consistent copy of the database to `dest` using SQLite's online
+    /// backup API (safe even while the DB is in use and in WAL mode).
+    pub fn backup_to(&self, dest: &Path) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.backup(DatabaseName::Main, dest, None)?;
+        Ok(())
+    }
+
     pub fn get_all_snippets(&self, search: Option<&str>, language: Option<&str>, tag: Option<&str>, search_mode: Option<&str>) -> Result<Vec<Snippet>> {
         let conn = self.conn.lock().unwrap();
         

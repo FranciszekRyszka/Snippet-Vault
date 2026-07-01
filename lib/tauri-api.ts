@@ -109,3 +109,38 @@ export async function deleteSnippet(id: number): Promise<boolean> {
   const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
   return res.ok;
 }
+
+// ---- Database setup / management (desktop only) ---------------------------
+
+export type InitStatus = {
+  initialized: boolean;
+  db_path: string | null;
+};
+
+// Whether first-run database setup is needed. In the browser there is nothing
+// to set up (the web app always uses ./data/snippets.db), so report ready.
+export async function getInitStatus(): Promise<InitStatus> {
+  if (!isTauri()) return { initialized: true, db_path: null };
+  return invoke<InitStatus>("get_init_status");
+}
+
+// Create a new database. Pass a path to place it somewhere specific, or omit
+// to use the default app-data location.
+export async function initializeNewDb(path?: string): Promise<string> {
+  return invoke<string>("initialize_new_db", { path: path ?? null });
+}
+
+// Adopt an existing snippets.db the user already has.
+export async function useExistingDb(path: string): Promise<string> {
+  return invoke<string>("use_existing_db", { path });
+}
+
+export async function getDatabasePath(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("get_database_path");
+}
+
+// Write a copy of the current database to the given destination path.
+export async function backupDatabase(destination: string): Promise<string> {
+  return invoke<string>("backup_database", { destination });
+}

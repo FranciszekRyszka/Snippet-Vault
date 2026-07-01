@@ -1,10 +1,17 @@
 "use client";
 
-import { Code2, Moon, Sun, Plus } from "lucide-react";
+import { Code2, Moon, Sun, Plus, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
-export function Header({ onNewSnippet }: { onNewSnippet: () => void }) {
+export function Header({
+  onNewSnippet,
+  onOpenSettings,
+}: {
+  onNewSnippet: () => void;
+  // Provided only in the desktop app; when set, a settings button is shown.
+  onOpenSettings?: () => void;
+}) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -31,6 +38,15 @@ export function Header({ onNewSnippet }: { onNewSnippet: () => void }) {
             <Plus className="h-3.5 w-3.5" />
             New Prompt
           </button>
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
           {mounted && (
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
