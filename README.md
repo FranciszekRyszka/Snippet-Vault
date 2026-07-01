@@ -4,6 +4,15 @@ A code snippets library that runs as both a web app and a native cross-platform 
 
 Built with **Next.js 16**, **React 19**, **Tauri 2**, and **shadcn/ui**.
 
+## Documentation
+
+📖 Full documentation is on the **[project Wiki](https://github.com/FranciszekRyszka/Snippet-Vault/wiki)**:
+
+- [Installation](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Installation) · [User Guide](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/User-Guide)
+- [Development Setup](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Development-Setup) · [Building and Packaging](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Building-and-Packaging) · [Architecture](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Architecture)
+- [Data Storage](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Data-Storage) · [API and Commands](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/API-and-Commands)
+- [Continuous Integration](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Continuous-Integration) · [Troubleshooting](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Troubleshooting) · [Contributing](https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Contributing)
+
 ## Features
 
 - 📝 Create, edit, and delete code snippets
