@@ -1,10 +1,6 @@
 # Self-hosted GitLab CI — builds SnipVault installers for all three desktop
 # platforms, each on its own tagged runner:
 #
-#   tag "windows" -> Windows PC (Ryzen 7 3700X)  -> .msi + .exe
-#   tag "macos"   -> MacBook Air M2              -> universal .dmg (Intel + Apple Silicon)
-#   tag "linux"   -> Oracle Cloud server         -> .deb / .AppImage / .rpm
-#
 # Register each machine as a GitLab Runner (shell executor) with the matching
 # tag. Every runner needs Node.js >= 22 and Rust (rustup) installed. Additionally:
 #   - Windows: MSVC C++ Build Tools + WebView2 (preinstalled on Win 10/11)
