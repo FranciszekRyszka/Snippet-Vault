@@ -17,6 +17,7 @@
 
 stages:
   - build
+  - release
 
 variables:
   CI: "true" # stops pnpm from prompting to purge node_modules on a re-run
@@ -38,6 +39,23 @@ build:linux:
   tags: [linux]
   script:
     - pnpm tauri build
+    # On a tag, push installers to the package registry and record their links.
+    - |
+      if [ -z "$CI_COMMIT_TAG" ]; then
+        echo "No tag — skipping package upload."
+      else
+        mkdir -p .release-links
+        for f in src-tauri/target/release/bundle/deb/*.deb \
+                 src-tauri/target/release/bundle/appimage/*.AppImage \
+                 src-tauri/target/release/bundle/rpm/*.rpm; do
+          [ -e "$f" ] || continue
+          name=$(basename "$f")
+          url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/snipvault/${CI_COMMIT_TAG}/${name}"
+          echo "Uploading $name"
+          curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$f" "$url"
+          printf '{"name":"%s","url":"%s"}\n' "$name" "$url" >> .release-links/linux.jsonl
+        done
+      fi
   artifacts:
     name: "snipvault-linux-$CI_COMMIT_SHORT_SHA"
     when: on_success
@@ -46,12 +64,33 @@ build:linux:
       - src-tauri/target/release/bundle/deb/*.deb
       - src-tauri/target/release/bundle/appimage/*.AppImage
       - src-tauri/target/release/bundle/rpm/*.rpm
+      - .release-links/
 
 build:windows:
   extends: .base
   tags: [windows]
   script:
     - pnpm tauri build
+    # PowerShell (default shell executor on Windows runners).
+    - |
+      if (-not $env:CI_COMMIT_TAG) {
+        Write-Host "No tag - skipping package upload."
+      } else {
+        New-Item -ItemType Directory -Force -Path .release-links | Out-Null
+        $patterns = @(
+          "src-tauri/target/release/bundle/msi/*.msi",
+          "src-tauri/target/release/bundle/nsis/*.exe"
+        )
+        foreach ($p in $patterns) {
+          Get-ChildItem -Path $p -ErrorAction SilentlyContinue | ForEach-Object {
+            $name = $_.Name
+            $url = "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID/packages/generic/snipvault/$env:CI_COMMIT_TAG/$name"
+            Write-Host "Uploading $name"
+            curl.exe --fail --silent --show-error --header "JOB-TOKEN: $env:CI_JOB_TOKEN" --upload-file $_.FullName $url
+            Add-Content -Path ".release-links/windows.jsonl" -Value ('{"name":"' + $name + '","url":"' + $url + '"}')
+          }
+        }
+      }
   artifacts:
     name: "snipvault-windows-$CI_COMMIT_SHORT_SHA"
     when: on_success
@@ -59,6 +98,7 @@ build:windows:
     paths:
       - src-tauri/target/release/bundle/msi/*.msi
       - src-tauri/target/release/bundle/nsis/*.exe
+      - .release-links/
 
 build:macos:
   extends: .base
@@ -67,6 +107,20 @@ build:macos:
     # Build a single universal binary covering both Apple Silicon and Intel Macs.
     - rustup target add aarch64-apple-darwin x86_64-apple-darwin
     - pnpm tauri build --target universal-apple-darwin
+    - |
+      if [ -z "$CI_COMMIT_TAG" ]; then
+        echo "No tag — skipping package upload."
+      else
+        mkdir -p .release-links
+        for f in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
+          [ -e "$f" ] || continue
+          name=$(basename "$f")
+          url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/snipvault/${CI_COMMIT_TAG}/${name}"
+          echo "Uploading $name"
+          curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$f" "$url"
+          printf '{"name":"%s","url":"%s"}\n' "$name" "$url" >> .release-links/macos.jsonl
+        done
+      fi
   artifacts:
     name: "snipvault-macos-$CI_COMMIT_SHORT_SHA"
     when: on_success
@@ -74,3 +128,50 @@ build:macos:
     paths:
       - src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
       - src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+      - .release-links/
+
+# Creates the GitLab Release and attaches each uploaded installer as an asset
+# link. Runs on the Linux runner, on tags only. It pulls the .release-links/
+# artifacts from the three build jobs and feeds each recorded line to
+# release-cli as an --assets-link.
+release:
+  stage: release
+  tags: [linux]
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  needs:
+    - job: build:linux
+      artifacts: true
+    - job: build:windows
+      artifacts: true
+    - job: build:macos
+      artifacts: true
+  script:
+    - |
+      set -e
+      # release-cli is a single static binary; grab the right arch for this runner
+      # (Oracle Ampere instances are arm64; x86 instances are amd64).
+      arch=$(uname -m)
+      case "$arch" in aarch64|arm64) rc=arm64 ;; *) rc=amd64 ;; esac
+      curl -L -o ./release-cli "https://gitlab.com/gitlab-org/release-cli/-/releases/permalink/latest/downloads/bin/release-cli-linux-${rc}"
+      chmod +x ./release-cli
+
+      # Gather every asset-link line produced by the build jobs.
+      args=()
+      shopt -s nullglob
+      for f in .release-links/*.jsonl; do
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--assets-link "$line")
+        done < "$f"
+      done
+
+      if [ ${#args[@]} -eq 0 ]; then
+        echo "No installer links found — did the build jobs upload anything?" >&2
+        exit 1
+      fi
+
+      ./release-cli create \
+        --tag-name "$CI_COMMIT_TAG" \
+        --name "SnipVault $CI_COMMIT_TAG" \
+        --description "Automated build. Download the installer for your platform from the assets below." \
+        "${args[@]}"
