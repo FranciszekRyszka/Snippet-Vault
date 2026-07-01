@@ -16,10 +16,12 @@ Built with **Next.js 16**, **React 19**, **Tauri 2**, and **shadcn/ui**.
 ## Features
 
 - 📝 Create, edit, and delete code snippets
-- 🎨 Syntax highlighting for 30+ languages (powered by highlight.js)
-- 🏷️ Tag support with search and filtering
+- 🎨 Syntax highlighting for 35 languages (powered by highlight.js)
+- 🏷️ Tag support with autocomplete, search, and filtering
 - 🌗 Light / dark theme toggle (follows system by default)
 - ⚡ Fast, local SQLite storage
+- 🗄️ **Choose your database location** on first launch — create a new one or use an existing `snippets.db` (e.g. in a synced folder) *(desktop)*
+- 💾 **One-click database backup** from Settings *(desktop)*
 - 🖥️ Runs in the browser or as a native desktop app (macOS, Windows, Linux)
 
 ## Tech Stack
@@ -35,7 +37,7 @@ Built with **Next.js 16**, **React 19**, **Tauri 2**, and **shadcn/ui**.
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+ and [pnpm](https://pnpm.io/)
+- [Node.js](https://nodejs.org/) 22+ and [pnpm](https://pnpm.io/) 11
 - For the **desktop app** only:
   - [Rust](https://rustup.rs/)
   - **Windows**: [Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) + [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
@@ -89,10 +91,12 @@ Runs `pnpm build:tauri`, which produces a static export in `out/` (the API route
 ## Data Storage
 
 - **Web app** — `./data/snippets.db`
-- **Desktop app** — the OS local data directory:
+- **Desktop app** — configurable. On first launch you choose to create a new database or use an existing `snippets.db`; the location is remembered in a `config.json` and can be changed later in **Settings**. The default location is the OS local data directory:
   - **macOS**: `~/Library/Application Support/snipvault/snippets.db`
   - **Windows**: `C:\Users\<User>\AppData\Local\snipvault\snippets.db`
   - **Linux**: `~/.local/share/snipvault/snippets.db`
+
+  You can back up the database at any time from **Settings → Back up database**.
 
 ## Project Structure
 
