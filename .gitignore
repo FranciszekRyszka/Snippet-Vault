@@ -12,6 +12,9 @@ out/
 .env*.local
 .DS_Store
 
+# TypeScript incremental build info
+*.tsbuildinfo
+
 # Tauri build output
 src-tauri/target/
 
