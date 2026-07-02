@@ -9,6 +9,12 @@ import { EmptyState } from "./empty-state";
 import { DeleteDialog } from "./delete-dialog";
 import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
+import { UpdateBanner } from "./update-banner";
+import {
+  checkForUpdate,
+  isAutoUpdateEnabled,
+  type AvailableUpdate,
+} from "@/lib/updater";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   getSnippets,
@@ -32,6 +38,10 @@ export function SnippetsDashboard() {
   const [showSettings, setShowSettings] = useState(false);
   // Set after mount to avoid hydration mismatch on the desktop-only settings UI.
   const [desktop, setDesktop] = useState(false);
+
+  // Update found by the automatic startup check (desktop only).
+  const [update, setUpdate] = useState<AvailableUpdate | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("");
@@ -90,6 +100,17 @@ export function SnippetsDashboard() {
     getInitStatus()
       .then((status) => setDbReady(status.initialized))
       .catch(() => setDbReady(false));
+  }, []);
+
+  // On startup, look for an app update (desktop only, and only if the user
+  // hasn't disabled automatic checks in Settings). Failures are silent.
+  useEffect(() => {
+    if (!isTauri() || !isAutoUpdateEnabled()) return;
+    checkForUpdate()
+      .then((found) => {
+        if (found) setUpdate(found);
+      })
+      .catch(() => {});
   }, []);
 
   // Only load snippets once the database is ready.
@@ -240,6 +261,13 @@ export function SnippetsDashboard() {
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6">
+        {update && !updateDismissed && (
+          <UpdateBanner
+            update={update}
+            onDismiss={() => setUpdateDismissed(true)}
+          />
+        )}
+
         <div className="mb-6">
           <SearchBar
             search={search}

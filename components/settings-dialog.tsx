@@ -1,12 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, FolderOpen, Save, Loader2, Check } from "lucide-react";
+import {
+  X,
+  FolderOpen,
+  Save,
+  Loader2,
+  Check,
+  Download,
+  RefreshCw,
+} from "lucide-react";
 import {
   getDatabasePath,
   useExistingDb,
   backupDatabase,
 } from "@/lib/tauri-api";
+import {
+  checkForUpdate,
+  relaunchApp,
+  getAppVersion,
+  isAutoUpdateEnabled,
+  setAutoUpdateEnabled,
+  type AvailableUpdate,
+} from "@/lib/updater";
 
 type SettingsDialogProps = {
   onClose: () => void;
@@ -22,9 +38,56 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // --- Updates ---
+  const [version, setVersion] = useState<string>("");
+  const [autoCheck, setAutoCheck] = useState(true);
+  const [update, setUpdate] = useState<AvailableUpdate | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<
+    "idle" | "checking" | "up-to-date" | "available" | "installing" | "done"
+  >("idle");
+  const [updatePercent, setUpdatePercent] = useState<number | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
   useEffect(() => {
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
+    getAppVersion().then(setVersion).catch(() => setVersion(""));
+    setAutoCheck(isAutoUpdateEnabled());
   }, []);
+
+  const toggleAutoCheck = (enabled: boolean) => {
+    setAutoCheck(enabled);
+    setAutoUpdateEnabled(enabled);
+  };
+
+  const handleCheckUpdate = async () => {
+    setUpdateError(null);
+    setUpdatePhase("checking");
+    try {
+      const found = await checkForUpdate();
+      if (found) {
+        setUpdate(found);
+        setUpdatePhase("available");
+      } else {
+        setUpdatePhase("up-to-date");
+      }
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+      setUpdatePhase("idle");
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!update) return;
+    setUpdateError(null);
+    setUpdatePhase("installing");
+    try {
+      await update.install((p) => setUpdatePercent(p));
+      setUpdatePhase("done");
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+      setUpdatePhase("available");
+    }
+  };
 
   const timestampedName = () => {
     const d = new Date();
@@ -149,6 +212,86 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               {error}
             </p>
           )}
+
+          <div className="border-t border-border pt-5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-sm font-medium text-foreground">
+                Updates
+              </label>
+              {version && (
+                <span className="text-xs text-muted-foreground">
+                  Current version {version}
+                </span>
+              )}
+            </div>
+
+            <label className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={autoCheck}
+                onChange={(e) => toggleAutoCheck(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Check for updates automatically on startup
+            </label>
+
+            {updatePhase === "done" ? (
+              <button
+                type="button"
+                onClick={() => relaunchApp()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Restart to finish updating
+              </button>
+            ) : updatePhase === "available" ? (
+              <button
+                type="button"
+                onClick={handleInstallUpdate}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4" />
+                Update to v{update?.version}
+              </button>
+            ) : updatePhase === "installing" ? (
+              <button
+                type="button"
+                disabled
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-70"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {updatePercent === null
+                  ? "Downloading…"
+                  : `Downloading ${updatePercent}%`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCheckUpdate}
+                disabled={updatePhase === "checking"}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                {updatePhase === "checking" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Check for updates
+              </button>
+            )}
+
+            {updatePhase === "up-to-date" && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Check className="h-3.5 w-3.5" />
+                You&apos;re on the latest version.
+              </p>
+            )}
+            {updateError && (
+              <p className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {updateError}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

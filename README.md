@@ -25,6 +25,7 @@ Built with **Next.js 16**, **React 19**, **Tauri 2**, and **shadcn/ui**.
 - ⚡ Fast, local SQLite storage
 - 🗄️ **Choose your database location** on first launch — create a new one or use an existing `snippets.db` (e.g. in a synced folder) *(desktop)*
 - 💾 **One-click database backup** from Settings *(desktop)*
+- 🔄 **Built-in auto-update** — the app checks GitHub for new versions and updates itself in place (your database is untouched); automatic startup checks can be turned off *(desktop)*
 - 🖥️ Runs in the browser or as a native desktop app (macOS, Windows, Linux)
 
 ## Tech Stack
