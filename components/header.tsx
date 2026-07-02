@@ -33,6 +33,7 @@ export function Header({
         <div className="flex items-center gap-2">
           <button
             onClick={onNewSnippet}
+            title="New prompt (Ctrl/⌘+N)"
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />

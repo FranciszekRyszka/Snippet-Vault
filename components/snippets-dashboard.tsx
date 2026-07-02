@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Header } from "./header";
 import { SearchBar, type SearchMode } from "./search-bar";
 import { SnippetCard } from "./snippet-card";
@@ -44,6 +44,8 @@ export function SnippetsDashboard() {
   const [deleting, setDeleting] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch snippets
   const fetchSnippets = useCallback(async () => {
@@ -110,6 +112,19 @@ export function SnippetsDashboard() {
     return Array.from(tagSet).sort();
   }, [allSnippets]);
 
+  // Library-wide stats (based on the full, unfiltered collection).
+  const stats = useMemo(() => {
+    const languages = new Set<string>();
+    for (const snippet of allSnippets) {
+      if (snippet.language) languages.add(snippet.language);
+    }
+    return {
+      total: allSnippets.length,
+      languages: languages.size,
+      tags: allTags.length,
+    };
+  }, [allSnippets, allTags]);
+
   const handleSave = async (data: {
     title: string;
     description: string;
@@ -150,10 +165,61 @@ export function SnippetsDashboard() {
     }
   };
 
-  const handleNewSnippet = () => {
+  const handleNewSnippet = useCallback(() => {
     setEditingSnippet(null);
     setShowForm(true);
-  };
+  }, []);
+
+  // Whether any modal/dialog is currently open.
+  const anyModalOpen =
+    showForm || showSettings || deletingId !== null || dbReady === false;
+
+  // Global keyboard shortcuts.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+
+      // Esc closes whatever dialog is open (except the first-run setup, which
+      // must be completed). Let inputs handle their own Esc first.
+      if (e.key === "Escape") {
+        if (showForm) {
+          setShowForm(false);
+          setEditingSnippet(null);
+        } else if (showSettings) {
+          setShowSettings(false);
+        } else if (deletingId !== null) {
+          setDeletingId(null);
+        }
+        return;
+      }
+
+      // Don't fire creation/search shortcuts while a dialog is open.
+      if (anyModalOpen) return;
+
+      // Cmd/Ctrl+N — new prompt.
+      if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        handleNewSnippet();
+        return;
+      }
+
+      // Cmd/Ctrl+K or "/" — focus the search box.
+      if ((mod && e.key.toLowerCase() === "k") || (e.key === "/" && !typing)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [anyModalOpen, showForm, showSettings, deletingId, handleNewSnippet]);
 
   const handleEdit = (snippet: Snippet) => {
     setEditingSnippet(snippet);
@@ -185,8 +251,32 @@ export function SnippetsDashboard() {
             activeTag={activeTag}
             onActiveTagChange={setActiveTag}
             allTags={allTags}
+            inputRef={searchInputRef}
           />
         </div>
+
+        {dbReady && stats.total > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+            <span>
+              <span className="font-semibold text-foreground">
+                {stats.total}
+              </span>{" "}
+              prompt{stats.total !== 1 ? "s" : ""}
+            </span>
+            <span>
+              <span className="font-semibold text-foreground">
+                {stats.languages}
+              </span>{" "}
+              language{stats.languages !== 1 ? "s" : ""}
+            </span>
+            <span>
+              <span className="font-semibold text-foreground">
+                {stats.tags}
+              </span>{" "}
+              tag{stats.tags !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
@@ -207,10 +297,11 @@ export function SnippetsDashboard() {
           </div>
         ) : snippets && snippets.length > 0 ? (
           <>
-            <p className="mb-4 text-sm text-muted-foreground">
-              {snippets.length} prompt{snippets.length !== 1 ? "s" : ""}
-              {hasFilters ? " found" : ""}
-            </p>
+            {hasFilters && (
+              <p className="mb-4 text-sm text-muted-foreground">
+                {snippets.length} prompt{snippets.length !== 1 ? "s" : ""} found
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
               {snippets.map((snippet) => (
                 <SnippetCard

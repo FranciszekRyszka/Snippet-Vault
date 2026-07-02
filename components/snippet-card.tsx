@@ -1,6 +1,7 @@
 "use client";
 
-import { Pencil, Trash2, Calendar } from "lucide-react";
+import { useState } from "react";
+import { Pencil, Trash2, Calendar, Copy, Check } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { CodeBlock } from "./code-block";
 import type { Snippet } from "@/lib/tauri-api";
@@ -13,6 +14,8 @@ type SnippetCardProps = {
 };
 
 export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCardProps) {
+  const [copied, setCopied] = useState(false);
+
   const date = new Date(snippet.created_at).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -20,6 +23,12 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
   });
 
   const tags = snippet.tags || [];
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(snippet.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <article className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30">
@@ -35,6 +44,21 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            onClick={handleCopy}
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+              copied
+                ? "text-green-600 dark:text-green-500"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+            aria-label={copied ? "Copied" : "Copy prompt"}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </button>
           <button
             onClick={() => onEdit(snippet)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

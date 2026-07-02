@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import { Search, X, Tag } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
 
@@ -15,6 +16,7 @@ type SearchBarProps = {
   activeTag: string;
   onActiveTagChange: (tag: string) => void;
   allTags: string[];
+  inputRef?: RefObject<HTMLInputElement | null>;
 };
 
 export function SearchBar({
@@ -27,6 +29,7 @@ export function SearchBar({
   activeTag,
   onActiveTagChange,
   allTags,
+  inputRef,
 }: SearchBarProps) {
   const placeholders: Record<SearchMode, string> = {
     all: "Search by title, description, or tags...",
@@ -40,10 +43,12 @@ export function SearchBar({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={inputRef}
             type="text"
             placeholder={placeholders[searchMode]}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
+            title="Focus search (Ctrl/⌘+K or /)"
             className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
           {search && (
