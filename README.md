@@ -18,6 +18,9 @@ Built with **Next.js 16**, **React 19**, **Tauri 2**, and **shadcn/ui**.
 - 📝 Create, edit, and delete code snippets
 - 🎨 Syntax highlighting for 35 languages (powered by highlight.js)
 - 🏷️ Tag support with autocomplete, search, and filtering
+- 📋 **One-click copy** of any snippet to the clipboard
+- ⌨️ **Keyboard shortcuts** — new prompt (Ctrl/⌘+N), focus search (Ctrl/⌘+K or `/`), close dialogs (Esc)
+- 📊 **Library stats** — total prompts, languages, and tags at a glance
 - 🌗 Light / dark theme toggle (follows system by default)
 - ⚡ Fast, local SQLite storage
 - 🗄️ **Choose your database location** on first launch — create a new one or use an existing `snippets.db` (e.g. in a synced folder) *(desktop)*
