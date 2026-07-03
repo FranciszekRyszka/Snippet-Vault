@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 127.0.0.1",

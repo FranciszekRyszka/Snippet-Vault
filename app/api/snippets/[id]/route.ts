@@ -72,6 +72,46 @@ export async function PUT(
   }
 }
 
+// Partial update — currently just the `favorite` (pin) flag.
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    const body = await request.json();
+    const { favorite } = body;
+
+    if (typeof favorite !== "boolean") {
+      return NextResponse.json(
+        { error: "favorite (boolean) is required" },
+        { status: 400 }
+      );
+    }
+
+    const stmt = db.prepare(
+      "UPDATE snippets SET favorite = ? WHERE id = ?"
+    );
+    const result = stmt.run(favorite ? 1 : 0, parseInt(id));
+
+    if (result.changes === 0) {
+      return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
+    }
+
+    const updated = db
+      .prepare("SELECT * FROM snippets WHERE id = ?")
+      .get(parseInt(id)) as Record<string, unknown>;
+
+    return NextResponse.json(rowToSnippet(updated));
+  } catch (error) {
+    console.error("Failed to update favorite:", error);
+    return NextResponse.json(
+      { error: "Failed to update favorite" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

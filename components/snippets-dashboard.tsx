@@ -21,10 +21,13 @@ import {
   createSnippet,
   updateSnippet,
   deleteSnippet,
+  setFavorite,
   getInitStatus,
   isTauri,
   type Snippet,
+  type CreateSnippetInput,
 } from "@/lib/tauri-api";
+import { LANGUAGES } from "@/lib/languages";
 import { Loader2 } from "lucide-react";
 
 export function SnippetsDashboard() {
@@ -53,9 +56,12 @@ export function SnippetsDashboard() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+
   const debouncedSearch = useDebounce(search, 300);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch snippets
   const fetchSnippets = useCallback(async () => {
@@ -186,6 +192,71 @@ export function SnippetsDashboard() {
     }
   };
 
+  const handleToggleFavorite = async (id: number, favorite: boolean) => {
+    // Optimistically flip the star for snappiness, then refetch so the pinned
+    // ordering is applied (and rolled back if the write fails).
+    setSnippets((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, favorite } : s))
+    );
+    try {
+      await setFavorite(id, favorite);
+      await fetchSnippets();
+    } catch (err) {
+      console.error("Failed to update favorite:", err);
+      setSnippets((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, favorite: !favorite } : s))
+      );
+    }
+  };
+
+  const handleImportClick = () => fileInputRef.current?.click();
+
+  // Import prompts from a JSON file — either a single exported prompt (an object)
+  // or an array of them. Invalid entries are skipped rather than aborting.
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be re-selected later
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const validLanguages = new Set(LANGUAGES.map((l) => l.value));
+      let imported = 0;
+      for (const item of items) {
+        if (
+          !item ||
+          typeof item.title !== "string" ||
+          typeof item.code !== "string"
+        ) {
+          continue;
+        }
+        const input: CreateSnippetInput = {
+          title: item.title.slice(0, 255),
+          description:
+            typeof item.description === "string" ? item.description : "",
+          code: item.code,
+          language: validLanguages.has(item.language) ? item.language : "text",
+          tags: Array.isArray(item.tags)
+            ? item.tags.filter((t: unknown): t is string => typeof t === "string")
+            : [],
+        };
+        await createSnippet(input);
+        imported++;
+      }
+      await fetchSnippets();
+      await fetchAllSnippets();
+      setImportNotice(
+        imported > 0
+          ? `Imported ${imported} prompt${imported !== 1 ? "s" : ""}.`
+          : "No valid prompts found in that file."
+      );
+    } catch (err) {
+      console.error("Import failed:", err);
+      setImportNotice("Couldn't import — is it a valid JSON export?");
+    }
+    setTimeout(() => setImportNotice(null), 4000);
+  };
+
   const handleNewSnippet = useCallback(() => {
     setEditingSnippet(null);
     setShowForm(true);
@@ -257,7 +328,16 @@ export function SnippetsDashboard() {
     <div className="min-h-screen bg-background">
       <Header
         onNewSnippet={handleNewSnippet}
+        onImport={handleImportClick}
         onOpenSettings={desktop ? () => setShowSettings(true) : undefined}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        onChange={handleImportFile}
+        className="hidden"
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6">
@@ -266,6 +346,12 @@ export function SnippetsDashboard() {
             update={update}
             onDismiss={() => setUpdateDismissed(true)}
           />
+        )}
+
+        {importNotice && (
+          <div className="mb-4 rounded-lg border border-border bg-primary/10 px-4 py-2.5 text-sm text-primary">
+            {importNotice}
+          </div>
         )}
 
         <div className="mb-6">
@@ -338,6 +424,7 @@ export function SnippetsDashboard() {
                   onEdit={handleEdit}
                   onDelete={setDeletingId}
                   onTagClick={handleTagClick}
+                  onToggleFavorite={handleToggleFavorite}
                 />
               ))}
             </div>

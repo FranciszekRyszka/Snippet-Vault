@@ -1,14 +1,17 @@
 "use client";
 
-import { Code2, Moon, Sun, Plus, Settings } from "lucide-react";
+import { Code2, Moon, Sun, Plus, Settings, Upload } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 export function Header({
   onNewSnippet,
+  onImport,
   onOpenSettings,
 }: {
   onNewSnippet: () => void;
+  // Opens a file picker to import prompts from a JSON export.
+  onImport: () => void;
   // Provided only in the desktop app; when set, a settings button is shown.
   onOpenSettings?: () => void;
 }) {
@@ -38,6 +41,14 @@ export function Header({
           >
             <Plus className="h-3.5 w-3.5" />
             New Prompt
+          </button>
+          <button
+            onClick={onImport}
+            title="Import prompts from a JSON file"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Import prompts"
+          >
+            <Upload className="h-4 w-4" />
           </button>
           {onOpenSettings && (
             <button

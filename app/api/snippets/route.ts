@@ -43,7 +43,8 @@ export async function GET(request: Request) {
       }
     }
 
-    query += " ORDER BY created_at DESC";
+    // Pinned (favorite) snippets float to the top, newest first within each group.
+    query += " ORDER BY favorite DESC, created_at DESC";
 
     const stmt = db.prepare(query);
     const rows = stmt.all(...params) as Record<string, unknown>[];

@@ -11,6 +11,7 @@ pub struct Snippet {
     pub code: String,
     pub language: String,
     pub tags: Vec<String>,
+    pub favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -67,6 +68,13 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);"
         )?;
 
+        // Migration: add the `favorite` column to databases created before this
+        // feature. ALTER TABLE errors if the column already exists, so ignore it.
+        let _ = conn.execute(
+            "ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+
         Ok(Self {
             conn: Mutex::new(conn),
             path: path.to_path_buf(),
@@ -89,7 +97,7 @@ impl Database {
     pub fn get_all_snippets(&self, search: Option<&str>, language: Option<&str>, tag: Option<&str>, search_mode: Option<&str>) -> Result<Vec<Snippet>> {
         let conn = self.conn.lock().unwrap();
         
-        let mut sql = String::from("SELECT id, title, description, code, language, tags, created_at, updated_at FROM snippets WHERE 1=1");
+        let mut sql = String::from("SELECT id, title, description, code, language, tags, favorite, created_at, updated_at FROM snippets WHERE 1=1");
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         
         if let Some(lang) = language {
@@ -131,15 +139,17 @@ impl Database {
             }
         }
         
-        sql.push_str(" ORDER BY created_at DESC");
-        
+        // Pinned (favorite) snippets float to the top, newest first within each group.
+        sql.push_str(" ORDER BY favorite DESC, created_at DESC");
+
         let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
-        
+
         let mut stmt = conn.prepare(&sql)?;
         let snippet_iter = stmt.query_map(params_refs.as_slice(), |row| {
             let tags_json: String = row.get(5)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-            
+            let favorite: i64 = row.get(6)?;
+
             Ok(Snippet {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -147,8 +157,9 @@ impl Database {
                 code: row.get(3)?,
                 language: row.get(4)?,
                 tags,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                favorite: favorite != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         })?;
         
@@ -163,15 +174,16 @@ impl Database {
     pub fn get_snippet(&self, id: i64) -> Result<Option<Snippet>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, title, description, code, language, tags, created_at, updated_at FROM snippets WHERE id = ?"
+            "SELECT id, title, description, code, language, tags, favorite, created_at, updated_at FROM snippets WHERE id = ?"
         )?;
-        
+
         let mut rows = stmt.query(params![id])?;
-        
+
         if let Some(row) = rows.next()? {
             let tags_json: String = row.get(5)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-            
+            let favorite: i64 = row.get(6)?;
+
             Ok(Some(Snippet {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -179,8 +191,9 @@ impl Database {
                 code: row.get(3)?,
                 language: row.get(4)?,
                 tags,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                favorite: favorite != 0,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             }))
         } else {
             Ok(None)
@@ -228,5 +241,21 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let rows_affected = conn.execute("DELETE FROM snippets WHERE id = ?", params![id])?;
         Ok(rows_affected > 0)
+    }
+
+    /// Pin/unpin a snippet. Returns the updated snippet, or `None` if not found.
+    pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<Option<Snippet>> {
+        let conn = self.conn.lock().unwrap();
+        let rows_affected = conn.execute(
+            "UPDATE snippets SET favorite = ? WHERE id = ?",
+            params![favorite as i64, id],
+        )?;
+        drop(conn);
+
+        if rows_affected > 0 {
+            self.get_snippet(id)
+        } else {
+            Ok(None)
+        }
     }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2, Calendar, Copy, Check } from "lucide-react";
+import { Pencil, Trash2, Calendar, Copy, Check, Star, Download } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { CodeBlock } from "./code-block";
 import type { Snippet } from "@/lib/tauri-api";
@@ -11,9 +11,10 @@ type SnippetCardProps = {
   onEdit: (snippet: Snippet) => void;
   onDelete: (id: number) => void;
   onTagClick: (tag: string) => void;
+  onToggleFavorite: (id: number, favorite: boolean) => void;
 };
 
-export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCardProps) {
+export function SnippetCard({ snippet, onEdit, onDelete, onTagClick, onToggleFavorite }: SnippetCardProps) {
   const [copied, setCopied] = useState(false);
 
   const date = new Date(snippet.created_at).toLocaleDateString("en-US", {
@@ -30,6 +31,34 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Export this single prompt as a JSON file. A Blob download works in both the
+  // browser and the Tauri (WebView2) webview, so no filesystem plugin is needed.
+  const handleExport = () => {
+    const data = {
+      title: snippet.title,
+      description: snippet.description,
+      code: snippet.code,
+      language: snippet.language,
+      tags: snippet.tags || [],
+    };
+    const slug =
+      snippet.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "prompt";
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <article className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -43,7 +72,24 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-1">
+          {/* The star is always visible when pinned so favorites are marked at rest;
+              otherwise it appears (empty) on hover like the other actions. */}
+          <button
+            onClick={() => onToggleFavorite(snippet.id, !snippet.favorite)}
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+              snippet.favorite
+                ? "text-amber-500 hover:bg-accent"
+                : "text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+            }`}
+            aria-label={snippet.favorite ? "Unpin prompt" : "Pin prompt"}
+            aria-pressed={snippet.favorite}
+          >
+            <Star
+              className={`h-3.5 w-3.5 ${snippet.favorite ? "fill-current" : ""}`}
+            />
+          </button>
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             onClick={handleCopy}
             className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
@@ -60,6 +106,13 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
             )}
           </button>
           <button
+            onClick={handleExport}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Export prompt"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+          <button
             onClick={() => onEdit(snippet)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label="Edit prompt"
@@ -73,6 +126,7 @@ export function SnippetCard({ snippet, onEdit, onDelete, onTagClick }: SnippetCa
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+          </div>
         </div>
       </div>
 

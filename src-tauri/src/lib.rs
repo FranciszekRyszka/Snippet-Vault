@@ -156,6 +156,13 @@ fn delete_snippet(state: State<Mutex<AppState>>, id: i64) -> Result<bool, String
     db.delete_snippet(id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn set_favorite(state: State<Mutex<AppState>>, id: i64, favorite: bool) -> Result<Option<Snippet>, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.set_favorite(id, favorite).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Decide which database (if any) to open on startup.
@@ -197,6 +204,7 @@ pub fn run() {
             create_snippet,
             update_snippet,
             delete_snippet,
+            set_favorite,
             get_init_status,
             initialize_new_db,
             use_existing_db,

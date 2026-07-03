@@ -6,6 +6,7 @@ export type Snippet = {
   code: string;
   language: string;
   tags: string[];
+  favorite: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -108,6 +109,21 @@ export async function deleteSnippet(id: number): Promise<boolean> {
 
   const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
   return res.ok;
+}
+
+// Pin/unpin a snippet so it floats to the top of the list.
+export async function setFavorite(id: number, favorite: boolean): Promise<Snippet | null> {
+  if (isTauri()) {
+    return invoke<Snippet | null>("set_favorite", { id, favorite });
+  }
+
+  const res = await fetch(`/api/snippets/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favorite }),
+  });
+  if (!res.ok) return null;
+  return res.json();
 }
 
 // ---- Database setup / management (desktop only) ---------------------------

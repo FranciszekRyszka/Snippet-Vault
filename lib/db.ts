@@ -23,6 +23,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);
 `);
 
+// Migration: add the `favorite` column to databases created before this feature.
+const hasFavorite = (
+  db.prepare("PRAGMA table_info(snippets)").all() as { name: string }[]
+).some((c) => c.name === "favorite");
+if (!hasFavorite) {
+  db.exec("ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
+}
+
 export { db };
 
 export type Snippet = {
@@ -32,6 +40,7 @@ export type Snippet = {
   code: string;
   language: string;
   tags: string[];
+  favorite: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -41,5 +50,6 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
   return {
     ...row,
     tags: JSON.parse((row.tags as string) || "[]"),
+    favorite: Boolean(row.favorite),
   } as Snippet;
 }
