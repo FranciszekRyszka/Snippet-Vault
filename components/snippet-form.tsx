@@ -5,6 +5,8 @@ import React from "react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
+import { MODEL_SUGGESTIONS } from "@/lib/models";
+import { getPromptStats, formatCount } from "@/lib/prompt-stats";
 import type { Snippet } from "@/lib/tauri-api";
 
 type SnippetFormProps = {
@@ -15,6 +17,7 @@ type SnippetFormProps = {
     code: string;
     language: string;
     tags: string[];
+    model: string;
   }) => void;
   onCancel: () => void;
   saving: boolean;
@@ -32,6 +35,7 @@ export function SnippetForm({
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("text");
+  const [model, setModel] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -55,12 +59,14 @@ export function SnippetForm({
       setDescription(snippet.description || "");
       setCode(snippet.code);
       setLanguage(snippet.language);
+      setModel(snippet.model || "");
       setTags(snippet.tags || []);
     } else {
       setTitle("");
       setDescription("");
       setCode("");
       setLanguage("text");
+      setModel("");
       setTags([]);
     }
     setTagInput("");
@@ -130,10 +136,12 @@ export function SnippetForm({
       code,
       language,
       tags: finalTags,
+      model: model.trim(),
     });
   };
 
   const isEditing = !!snippet;
+  const stats = getPromptStats(code);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/20 backdrop-blur-sm pt-12 pb-12">
@@ -207,6 +215,33 @@ export function SnippetForm({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="snippet-model"
+              className="mb-1.5 block text-sm font-medium text-foreground"
+            >
+              Model / target{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            </label>
+            <input
+              id="snippet-model"
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              list="model-suggestions"
+              maxLength={100}
+              placeholder="e.g. Claude Opus 4.8, GPT-4o, Midjourney…"
+              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <datalist id="model-suggestions">
+              {MODEL_SUGGESTIONS.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
           </div>
 
           <div>
@@ -302,12 +337,20 @@ export function SnippetForm({
           </div>
 
           <div>
-            <label
-              htmlFor="snippet-code"
-              className="mb-1.5 block text-sm font-medium text-foreground"
-            >
-              Prompt <span className="text-destructive">*</span>
-            </label>
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <label
+                htmlFor="snippet-code"
+                className="block text-sm font-medium text-foreground"
+              >
+                Prompt <span className="text-destructive">*</span>
+              </label>
+              {code.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {formatCount(stats.chars)} characters · ~
+                  {formatCount(stats.tokens)} tokens
+                </span>
+              )}
+            </div>
             <textarea
               id="snippet-code"
               value={code}

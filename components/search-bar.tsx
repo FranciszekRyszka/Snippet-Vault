@@ -1,10 +1,11 @@
 "use client";
 
 import type { RefObject } from "react";
-import { Search, X, Tag } from "lucide-react";
+import { Search, X, Tag, Star, LayoutGrid, List } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
 
 export type SearchMode = "all" | "title" | "tags";
+export type ViewMode = "grid" | "list";
 
 type SearchBarProps = {
   search: string;
@@ -16,6 +17,10 @@ type SearchBarProps = {
   activeTag: string;
   onActiveTagChange: (tag: string) => void;
   allTags: string[];
+  favoritesOnly: boolean;
+  onFavoritesOnlyChange: (value: boolean) => void;
+  view: ViewMode;
+  onViewChange: (view: ViewMode) => void;
   inputRef?: RefObject<HTMLInputElement | null>;
 };
 
@@ -29,6 +34,10 @@ export function SearchBar({
   activeTag,
   onActiveTagChange,
   allTags,
+  favoritesOnly,
+  onFavoritesOnlyChange,
+  view,
+  onViewChange,
   inputRef,
 }: SearchBarProps) {
   const placeholders: Record<SearchMode, string> = {
@@ -85,6 +94,50 @@ export function SearchBar({
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => onFavoritesOnlyChange(!favoritesOnly)}
+            title="Show favorites only"
+            aria-pressed={favoritesOnly}
+            className={`flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+              favoritesOnly
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-500"
+                : "border-input bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <Star className={`h-4 w-4 ${favoritesOnly ? "fill-current" : ""}`} />
+            <span className="hidden sm:inline">Favorites</span>
+          </button>
+
+          <div className="flex h-10 items-center rounded-lg border border-input bg-card p-0.5">
+            <button
+              type="button"
+              onClick={() => onViewChange("grid")}
+              title="Grid view"
+              aria-pressed={view === "grid"}
+              className={`flex h-full items-center justify-center rounded-md px-2 transition-colors ${
+                view === "grid"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("list")}
+              title="List view"
+              aria-pressed={view === "list"}
+              className={`flex h-full items-center justify-center rounded-md px-2 transition-colors ${
+                view === "list"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 

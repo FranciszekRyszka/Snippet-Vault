@@ -11,7 +11,7 @@ export async function PUT(
   const { id } = await params;
   try {
     const body = await request.json();
-    const { title, description, code, language, tags } = body;
+    const { title, description, code, language, tags, model } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -38,18 +38,22 @@ export async function PUT(
       ? tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 20)
       : [];
 
+    const sanitizedModel =
+      typeof model === "string" ? model.trim().slice(0, 100) : "";
+
     const stmt = db.prepare(`
-      UPDATE snippets 
-      SET title = ?, description = ?, code = ?, language = ?, tags = ?, updated_at = datetime('now')
+      UPDATE snippets
+      SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, updated_at = datetime('now')
       WHERE id = ?
     `);
-    
+
     const result = stmt.run(
       title,
       description || "",
       code,
       language,
       JSON.stringify(sanitizedTags),
+      sanitizedModel,
       parseInt(id)
     );
 

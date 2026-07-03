@@ -9,12 +9,15 @@ type CodeBlockProps = {
   code: string;
   language: string;
   maxHeight?: string;
+  // Called after a successful copy, e.g. to record usage.
+  onCopied?: () => void;
 };
 
 export function CodeBlock({
   code,
   language,
   maxHeight = "400px",
+  onCopied,
 }: CodeBlockProps) {
   const codeRef = useRef<HTMLElement>(null);
   const [copied, setCopied] = useState(false);
@@ -29,6 +32,7 @@ export function CodeBlock({
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
     setCopied(true);
+    onCopied?.();
     setTimeout(() => setCopied(false), 2000);
   };
 

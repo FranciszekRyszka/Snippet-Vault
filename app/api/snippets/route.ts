@@ -37,9 +37,9 @@ export async function GET(request: Request) {
         query += " AND (title LIKE ? OR description LIKE ?)";
         params.push(searchLike, searchLike);
       } else {
-        // "all" mode - search title, description, and tags
-        query += " AND (title LIKE ? OR description LIKE ? OR tags LIKE ?)";
-        params.push(searchLike, searchLike, searchLike);
+        // "all" mode - search title, description, tags, and model
+        query += " AND (title LIKE ? OR description LIKE ? OR tags LIKE ? OR model LIKE ?)";
+        params.push(searchLike, searchLike, searchLike, searchLike);
       }
     }
 
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, description, code, language, tags } = body;
+    const { title, description, code, language, tags, model } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -90,17 +90,21 @@ export async function POST(request: Request) {
       ? tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 20)
       : [];
 
+    const sanitizedModel =
+      typeof model === "string" ? model.trim().slice(0, 100) : "";
+
     const stmt = db.prepare(`
-      INSERT INTO snippets (title, description, code, language, tags)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO snippets (title, description, code, language, tags, model)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     const result = stmt.run(
       title,
       description || "",
       code,
       language,
-      JSON.stringify(sanitizedTags)
+      JSON.stringify(sanitizedTags),
+      sanitizedModel
     );
 
     const newSnippet = db.prepare("SELECT * FROM snippets WHERE id = ?").get(result.lastInsertRowid) as Record<string, unknown>;

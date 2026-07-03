@@ -2,11 +2,11 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Header } from "./header";
-import { SearchBar, type SearchMode } from "./search-bar";
+import { SearchBar, type SearchMode, type ViewMode } from "./search-bar";
 import { SnippetCard } from "./snippet-card";
 import { SnippetForm } from "./snippet-form";
+import { SnippetDetail } from "./snippet-detail";
 import { EmptyState } from "./empty-state";
-import { DeleteDialog } from "./delete-dialog";
 import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { UpdateBanner } from "./update-banner";
@@ -22,13 +22,15 @@ import {
   updateSnippet,
   deleteSnippet,
   setFavorite,
+  recordCopy,
+  restoreSnippet,
   getInitStatus,
   isTauri,
   type Snippet,
   type CreateSnippetInput,
 } from "@/lib/tauri-api";
 import { LANGUAGES } from "@/lib/languages";
-import { Loader2 } from "lucide-react";
+import { Cpu, Loader2, X } from "lucide-react";
 
 export function SnippetsDashboard() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
@@ -50,11 +52,17 @@ export function SnippetsDashboard() {
   const [language, setLanguage] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("all");
   const [activeTag, setActiveTag] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [activeModel, setActiveModel] = useState("");
+  const [view, setView] = useState<ViewMode>("grid");
   const [showForm, setShowForm] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
+  // Undo-after-delete: the last deleted snippet, held so it can be restored.
+  const [pendingUndo, setPendingUndo] = useState<Snippet | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [importNotice, setImportNotice] = useState<string | null>(null);
 
@@ -62,6 +70,21 @@ export function SnippetsDashboard() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore the saved view preference (client-only to avoid hydration mismatch).
+  useEffect(() => {
+    const saved = localStorage.getItem("snipvault:view");
+    if (saved === "grid" || saved === "list") setView(saved);
+  }, []);
+
+  const changeView = (v: ViewMode) => {
+    setView(v);
+    try {
+      localStorage.setItem("snipvault:view", v);
+    } catch {
+      // ignore storage failures (e.g. private mode)
+    }
+  };
 
   // Fetch snippets
   const fetchSnippets = useCallback(async () => {
@@ -128,6 +151,11 @@ export function SnippetsDashboard() {
     if (dbReady) fetchAllSnippets();
   }, [dbReady, fetchAllSnippets]);
 
+  // Clear any pending undo timer on unmount.
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
   // Collect all unique tags from all snippets for the tag cloud
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -152,12 +180,27 @@ export function SnippetsDashboard() {
     };
   }, [allSnippets, allTags]);
 
+  // Client-side filters layered on top of the server-side search/language/tag.
+  const visible = useMemo(() => {
+    let list = snippets;
+    if (favoritesOnly) list = list.filter((s) => s.favorite);
+    if (activeModel) list = list.filter((s) => s.model === activeModel);
+    return list;
+  }, [snippets, favoritesOnly, activeModel]);
+
+  const detailSnippet = useMemo(
+    () =>
+      detailId === null ? null : snippets.find((s) => s.id === detailId) ?? null,
+    [detailId, snippets]
+  );
+
   const handleSave = async (data: {
     title: string;
     description: string;
     code: string;
     language: string;
     tags: string[];
+    model: string;
   }) => {
     setSaving(true);
     try {
@@ -177,27 +220,44 @@ export function SnippetsDashboard() {
     }
   };
 
-  const handleDelete = async () => {
-    if (deletingId === null) return;
-    setDeleting(true);
+  // Delete immediately and offer an Undo toast for a few seconds. Undo restores
+  // the prompt faithfully (favorite, model, usage, timestamps) via restore.
+  const handleDelete = async (snippet: Snippet) => {
+    setDetailId(null);
+    setSnippets((prev) => prev.filter((s) => s.id !== snippet.id));
+    setAllSnippets((prev) => prev.filter((s) => s.id !== snippet.id));
+    setPendingUndo(snippet);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setPendingUndo(null), 6000);
     try {
-      await deleteSnippet(deletingId);
-      await fetchSnippets();
-      await fetchAllSnippets();
-      setDeletingId(null);
+      await deleteSnippet(snippet.id);
     } catch (err) {
       console.error("Failed to delete snippet:", err);
-    } finally {
-      setDeleting(false);
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      setPendingUndo(null);
+      await fetchSnippets();
+      await fetchAllSnippets();
+    }
+  };
+
+  const handleUndo = async () => {
+    const snip = pendingUndo;
+    if (!snip) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setPendingUndo(null);
+    try {
+      await restoreSnippet(snip);
+      await fetchSnippets();
+      await fetchAllSnippets();
+    } catch (err) {
+      console.error("Failed to restore snippet:", err);
     }
   };
 
   const handleToggleFavorite = async (id: number, favorite: boolean) => {
     // Optimistically flip the star for snappiness, then refetch so the pinned
     // ordering is applied (and rolled back if the write fails).
-    setSnippets((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, favorite } : s))
-    );
+    setSnippets((prev) => prev.map((s) => (s.id === id ? { ...s, favorite } : s)));
     try {
       await setFavorite(id, favorite);
       await fetchSnippets();
@@ -208,6 +268,21 @@ export function SnippetsDashboard() {
       );
     }
   };
+
+  // Record a copy for usage tracking, updating the count optimistically.
+  const handleCopied = (id: number) => {
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const bump = (s: Snippet) =>
+      s.id === id
+        ? { ...s, copy_count: s.copy_count + 1, last_used_at: now }
+        : s;
+    setSnippets((prev) => prev.map(bump));
+    setAllSnippets((prev) => prev.map(bump));
+    void recordCopy(id);
+  };
+
+  const handleModelClick = (model: string) =>
+    setActiveModel((prev) => (prev === model ? "" : model));
 
   const handleImportClick = () => fileInputRef.current?.click();
 
@@ -239,6 +314,7 @@ export function SnippetsDashboard() {
           tags: Array.isArray(item.tags)
             ? item.tags.filter((t: unknown): t is string => typeof t === "string")
             : [],
+          model: typeof item.model === "string" ? item.model : "",
         };
         await createSnippet(input);
         imported++;
@@ -264,7 +340,7 @@ export function SnippetsDashboard() {
 
   // Whether any modal/dialog is currently open.
   const anyModalOpen =
-    showForm || showSettings || deletingId !== null || dbReady === false;
+    showForm || showSettings || detailId !== null || dbReady === false;
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -278,16 +354,14 @@ export function SnippetsDashboard() {
           target.tagName === "SELECT" ||
           target.isContentEditable);
 
-      // Esc closes whatever dialog is open (except the first-run setup, which
-      // must be completed). Let inputs handle their own Esc first.
+      // Esc closes whatever dialog is open (the detail view handles its own Esc;
+      // the first-run setup must be completed so is not closable here).
       if (e.key === "Escape") {
         if (showForm) {
           setShowForm(false);
           setEditingSnippet(null);
         } else if (showSettings) {
           setShowSettings(false);
-        } else if (deletingId !== null) {
-          setDeletingId(null);
         }
         return;
       }
@@ -311,9 +385,10 @@ export function SnippetsDashboard() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [anyModalOpen, showForm, showSettings, deletingId, handleNewSnippet]);
+  }, [anyModalOpen, showForm, showSettings, handleNewSnippet]);
 
   const handleEdit = (snippet: Snippet) => {
+    setDetailId(null);
     setEditingSnippet(snippet);
     setShowForm(true);
   };
@@ -322,7 +397,12 @@ export function SnippetsDashboard() {
     setActiveTag(activeTag === tag ? "" : tag);
   };
 
-  const hasFilters = !!debouncedSearch || !!language || !!activeTag;
+  const hasFilters =
+    !!debouncedSearch ||
+    !!language ||
+    !!activeTag ||
+    favoritesOnly ||
+    !!activeModel;
 
   return (
     <div className="min-h-screen bg-background">
@@ -365,6 +445,10 @@ export function SnippetsDashboard() {
             activeTag={activeTag}
             onActiveTagChange={setActiveTag}
             allTags={allTags}
+            favoritesOnly={favoritesOnly}
+            onFavoritesOnlyChange={setFavoritesOnly}
+            view={view}
+            onViewChange={changeView}
             inputRef={searchInputRef}
           />
         </div>
@@ -372,9 +456,7 @@ export function SnippetsDashboard() {
         {dbReady && stats.total > 0 && (
           <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <span>
-              <span className="font-semibold text-foreground">
-                {stats.total}
-              </span>{" "}
+              <span className="font-semibold text-foreground">{stats.total}</span>{" "}
               prompt{stats.total !== 1 ? "s" : ""}
             </span>
             <span>
@@ -384,11 +466,22 @@ export function SnippetsDashboard() {
               language{stats.languages !== 1 ? "s" : ""}
             </span>
             <span>
-              <span className="font-semibold text-foreground">
-                {stats.tags}
-              </span>{" "}
+              <span className="font-semibold text-foreground">{stats.tags}</span>{" "}
               tag{stats.tags !== 1 ? "s" : ""}
             </span>
+          </div>
+        )}
+
+        {activeModel && (
+          <div className="mb-4">
+            <button
+              onClick={() => setActiveModel("")}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/70"
+            >
+              <Cpu className="h-3 w-3" />
+              {activeModel}
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
 
@@ -409,22 +502,32 @@ export function SnippetsDashboard() {
               Retry
             </button>
           </div>
-        ) : snippets && snippets.length > 0 ? (
+        ) : visible.length > 0 ? (
           <>
             {hasFilters && (
               <p className="mb-4 text-sm text-muted-foreground">
-                {snippets.length} prompt{snippets.length !== 1 ? "s" : ""} found
+                {visible.length} prompt{visible.length !== 1 ? "s" : ""} found
               </p>
             )}
-            <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
-              {snippets.map((snippet) => (
+            <div
+              className={
+                view === "grid"
+                  ? "grid gap-4 sm:grid-cols-1 lg:grid-cols-2"
+                  : "flex flex-col gap-2"
+              }
+            >
+              {visible.map((snippet) => (
                 <SnippetCard
                   key={snippet.id}
                   snippet={snippet}
+                  view={view}
                   onEdit={handleEdit}
-                  onDelete={setDeletingId}
+                  onDelete={handleDelete}
                   onTagClick={handleTagClick}
+                  onModelClick={handleModelClick}
                   onToggleFavorite={handleToggleFavorite}
+                  onOpen={(s) => setDetailId(s.id)}
+                  onCopied={handleCopied}
                 />
               ))}
             </div>
@@ -447,12 +550,35 @@ export function SnippetsDashboard() {
         />
       )}
 
-      {deletingId !== null && (
-        <DeleteDialog
-          onConfirm={handleDelete}
-          onCancel={() => setDeletingId(null)}
-          deleting={deleting}
+      {detailSnippet && (
+        <SnippetDetail
+          snippet={detailSnippet}
+          onClose={() => setDetailId(null)}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onToggleFavorite={handleToggleFavorite}
+          onTagClick={(tag) => {
+            handleTagClick(tag);
+            setDetailId(null);
+          }}
+          onModelClick={(model) => {
+            handleModelClick(model);
+            setDetailId(null);
+          }}
+          onCopied={handleCopied}
         />
+      )}
+
+      {pendingUndo && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-lg border border-border bg-card px-4 py-2.5 text-sm shadow-lg">
+          <span className="text-foreground">Prompt deleted</span>
+          <button
+            onClick={handleUndo}
+            className="font-medium text-primary transition-colors hover:underline"
+          >
+            Undo
+          </button>
+        </div>
       )}
 
       {dbReady === false && (

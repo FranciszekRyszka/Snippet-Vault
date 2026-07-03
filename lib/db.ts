@@ -23,13 +23,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);
 `);
 
-// Migration: add the `favorite` column to databases created before this feature.
-const hasFavorite = (
-  db.prepare("PRAGMA table_info(snippets)").all() as { name: string }[]
-).some((c) => c.name === "favorite");
-if (!hasFavorite) {
-  db.exec("ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
-}
+// Migrations: add columns introduced after the initial schema to older
+// databases. Each is guarded so it runs at most once.
+const existingColumns = new Set(
+  (db.prepare("PRAGMA table_info(snippets)").all() as { name: string }[]).map(
+    (c) => c.name
+  )
+);
+const addColumn = (name: string, definition: string) => {
+  if (!existingColumns.has(name)) {
+    db.exec(`ALTER TABLE snippets ADD COLUMN ${definition}`);
+    existingColumns.add(name);
+  }
+};
+addColumn("favorite", "favorite INTEGER NOT NULL DEFAULT 0");
+addColumn("model", "model TEXT NOT NULL DEFAULT ''");
+addColumn("copy_count", "copy_count INTEGER NOT NULL DEFAULT 0");
+addColumn("last_used_at", "last_used_at TEXT");
 
 export { db };
 
@@ -41,6 +51,9 @@ export type Snippet = {
   language: string;
   tags: string[];
   favorite: boolean;
+  model: string;
+  copy_count: number;
+  last_used_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,5 +64,8 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     ...row,
     tags: JSON.parse((row.tags as string) || "[]"),
     favorite: Boolean(row.favorite),
+    model: (row.model as string) ?? "",
+    copy_count: Number(row.copy_count ?? 0),
+    last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;
 }

@@ -7,6 +7,9 @@ export type Snippet = {
   language: string;
   tags: string[];
   favorite: boolean;
+  model: string;
+  copy_count: number;
+  last_used_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -17,6 +20,7 @@ export type CreateSnippetInput = {
   code: string;
   language: string;
   tags?: string[];
+  model?: string;
 };
 
 export type UpdateSnippetInput = {
@@ -25,6 +29,7 @@ export type UpdateSnippetInput = {
   code: string;
   language: string;
   tags?: string[];
+  model?: string;
 };
 
 // Check if running in Tauri.
@@ -121,6 +126,36 @@ export async function setFavorite(id: number, favorite: boolean): Promise<Snippe
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ favorite }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// Record that a snippet was copied (bumps its usage count). Fire-and-forget:
+// failures are swallowed so a copy always succeeds even if tracking doesn't.
+export async function recordCopy(id: number): Promise<Snippet | null> {
+  try {
+    if (isTauri()) {
+      return await invoke<Snippet | null>("record_copy", { id });
+    }
+    const res = await fetch(`/api/snippets/${id}/copy`, { method: "POST" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// Re-insert a deleted snippet, preserving its fields. Backs undo-after-delete.
+export async function restoreSnippet(snippet: Snippet): Promise<Snippet | null> {
+  if (isTauri()) {
+    return invoke<Snippet | null>("restore_snippet", { snippet });
+  }
+
+  const res = await fetch(`/api/snippets/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(snippet),
   });
   if (!res.ok) return null;
   return res.json();
