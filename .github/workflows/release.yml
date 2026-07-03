@@ -3,16 +3,57 @@ name: Release
 # Builds SnipVault installers for Windows and macOS and attaches them to a
 # GitHub Release. Runs when a version tag (e.g. v1.1.0) is pushed, or manually
 # from the Actions tab.
+#
+# Structure: a single draft release is created up front (create-release), the
+# platform matrix uploads its bundles to that same release so the updater
+# `latest.json` merges correctly across platforms (build), and a final job
+# un-drafts it (publish). Creating the release first avoids the tauri-action
+# race where each parallel matrix job would otherwise spawn its own draft with
+# an incomplete latest.json.
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.release_id }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from tauri.conf.json
+        id: version
+        run: echo "version=$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: create-release
+        uses: actions/github-script@v7
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const version = process.env.APP_VERSION;
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version}`,
+              name: `SnipVault v${version}`,
+              body: 'See the assets below to download and install this version.',
+              draft: true,
+              prerelease: false,
+            });
+            core.setOutput('release_id', data.id);
+
   build:
-    permissions:
-      contents: write
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +95,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build app and publish to release
+      - name: Build app and upload to release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -63,11 +104,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # __VERSION__ is replaced with the version from tauri.conf.json,
-          # so the release is always tagged to match the app version.
-          tagName: v__VERSION__
-          releaseName: 'SnipVault v__VERSION__'
-          releaseBody: 'See the assets below to download and install this version.'
-          releaseDraft: true
-          prerelease: false
+          # Upload to the single draft release created above so every platform's
+          # bundle lands on the same release and latest.json merges correctly.
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
+
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(process.env.RELEASE_ID),
+              draft: false,
+              make_latest: 'true',
+            });
