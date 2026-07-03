@@ -22,3 +22,6 @@ src-tauri/target/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# Local notes / scratch
+ideas.md
