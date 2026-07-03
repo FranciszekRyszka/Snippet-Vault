@@ -80,6 +80,8 @@ pnpm build   # then: pnpm start
 
 Builds a Next.js server app (including the `/api/snippets` routes) into `.next/`.
 
+> **Web mode is single-user and local-only.** The `/api/snippets` routes have no authentication, so the dev and start servers bind to `127.0.0.1` (loopback) and are not reachable from other machines. Don't expose this to a network; if you deliberately need LAN access, override the host (e.g. `next start -H 0.0.0.0`) and put it behind your own auth/proxy.
+
 ### Desktop app
 
 ```bash

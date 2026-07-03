@@ -1,6 +1,6 @@
 [package]
 name = "snipvault"
-version = "1.4.0"
+version = "1.4.1"
 description = "A code snippets library"
 authors = ["SnipVault"]
 license = "MIT"
@@ -16,7 +16,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
