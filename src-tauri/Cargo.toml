@@ -1,6 +1,6 @@
 [package]
 name = "snipvault"
-version = "2.0.0"
+version = "2.0.1"
 description = "A code snippets library"
 authors = ["SnipVault"]
 license = "MIT"
@@ -21,7 +21,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup", "functions"] }
 dirs = "5"
 chrono = "0.4"
 

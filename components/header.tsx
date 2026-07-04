@@ -15,7 +15,10 @@ export function Header({
   // Provided only in the desktop app; when set, a settings button is shown.
   onOpenSettings?: () => void;
 }) {
-  const { theme, setTheme } = useTheme();
+  // resolvedTheme reflects the actual applied theme (light/dark), including when
+  // the preference is "system" — reading `theme` there gives "system", making
+  // the icon wrong and the first toggle a no-op.
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -61,11 +64,13 @@ export function Header({
           )}
           {mounted && (
             <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() =>
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Toggle theme"
             >
-              {theme === "dark" ? (
+              {resolvedTheme === "dark" ? (
                 <Sun className="h-4 w-4" />
               ) : (
                 <Moon className="h-4 w-4" />

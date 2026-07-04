@@ -23,17 +23,28 @@ export function CodeBlock({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (codeRef.current) {
-      codeRef.current.removeAttribute("data-highlighted");
-      hljs.highlightElement(codeRef.current);
-    }
+    const el = codeRef.current;
+    if (!el) return;
+    // Write the code via textContent (not JSX children) before highlighting.
+    // highlightElement replaces the element's innerHTML, which would detach a
+    // React-managed text node and leave stale code showing after an edit. Owning
+    // the content here keeps every render in sync with the latest `code`.
+    el.textContent = code;
+    el.removeAttribute("data-highlighted");
+    hljs.highlightElement(el);
   }, [code, language]);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    onCopied?.();
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      onCopied?.();
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Clipboard can be blocked (permissions/insecure context). Don't show a
+      // false "copied" state; just log it.
+      console.error("Copy failed:", err);
+    }
   };
 
   return (
@@ -57,9 +68,7 @@ export function CodeBlock({
           <code
             ref={codeRef}
             className={`language-${language} !bg-transparent !p-0 font-mono`}
-          >
-            {code}
-          </code>
+          />
         </pre>
       </div>
     </div>

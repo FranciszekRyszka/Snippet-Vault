@@ -1,6 +1,7 @@
 import { db, rowToSnippet, type Snippet } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
+import { escapeLike, sanitizeTags, sanitizeModel } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -23,22 +24,22 @@ export async function GET(request: Request) {
 
     // Tag filter (check if tag exists in JSON array)
     if (tag) {
-      query += " AND tags LIKE ?";
-      params.push(`%"${tag}"%`);
+      query += " AND tags LIKE ? ESCAPE '\\'";
+      params.push(`%"${escapeLike(tag)}"%`);
     }
 
     // Search filter with mode
     if (search) {
-      const searchLike = `%${search}%`;
+      const searchLike = `%${escapeLike(search)}%`;
       if (searchMode === "tags") {
-        query += " AND tags LIKE ?";
+        query += " AND tags LIKE ? ESCAPE '\\'";
         params.push(searchLike);
       } else if (searchMode === "title") {
-        query += " AND (title LIKE ? OR description LIKE ?)";
+        query += " AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')";
         params.push(searchLike, searchLike);
       } else {
         // "all" mode - search title, description, tags, and model
-        query += " AND (title LIKE ? OR description LIKE ? OR tags LIKE ? OR model LIKE ?)";
+        query += " AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\')";
         params.push(searchLike, searchLike, searchLike, searchLike);
       }
     }
@@ -86,12 +87,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const sanitizedTags = Array.isArray(tags)
-      ? tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 20)
-      : [];
-
-    const sanitizedModel =
-      typeof model === "string" ? model.trim().slice(0, 100) : "";
+    const sanitizedTags = sanitizeTags(tags);
+    const sanitizedModel = sanitizeModel(model);
 
     const stmt = db.prepare(`
       INSERT INTO snippets (title, description, code, language, tags, model)

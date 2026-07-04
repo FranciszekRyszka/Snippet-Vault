@@ -49,6 +49,21 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return tauriInvoke<T>(cmd, args);
 }
 
+// Throw a useful Error for a non-OK web response, preferring the server's own
+// `{ error }` message so callers can surface it. Only consumes the body on
+// failure, leaving res.json() available to the caller on success.
+async function throwIfNotOk(res: Response, fallback: string): Promise<void> {
+  if (res.ok) return;
+  let message = fallback;
+  try {
+    const body = await res.json();
+    if (body && typeof body.error === "string") message = body.error;
+  } catch {
+    // No JSON body; keep the fallback message.
+  }
+  throw new Error(message);
+}
+
 // API functions that work in both browser and Tauri
 export async function getSnippets(params?: {
   search?: string;
@@ -103,7 +118,7 @@ export async function updateSnippet(id: number, input: UpdateSnippetInput): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) return null;
+  await throwIfNotOk(res, "Failed to update snippet");
   return res.json();
 }
 
@@ -113,7 +128,8 @@ export async function deleteSnippet(id: number): Promise<boolean> {
   }
 
   const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
-  return res.ok;
+  await throwIfNotOk(res, "Failed to delete snippet");
+  return true;
 }
 
 // Pin/unpin a snippet so it floats to the top of the list.
@@ -127,7 +143,7 @@ export async function setFavorite(id: number, favorite: boolean): Promise<Snippe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ favorite }),
   });
-  if (!res.ok) return null;
+  await throwIfNotOk(res, "Failed to update favorite");
   return res.json();
 }
 
@@ -157,7 +173,7 @@ export async function restoreSnippet(snippet: Snippet): Promise<Snippet | null> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(snippet),
   });
-  if (!res.ok) return null;
+  await throwIfNotOk(res, "Failed to restore snippet");
   return res.json();
 }
 

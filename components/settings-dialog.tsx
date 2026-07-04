@@ -89,6 +89,15 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
     }
   };
 
+  const handleRelaunch = async () => {
+    try {
+      await relaunchApp();
+    } catch (err) {
+      // The update is installed; only the automatic restart failed.
+      setUpdateError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const timestampedName = () => {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -238,7 +247,7 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
             {updatePhase === "done" ? (
               <button
                 type="button"
-                onClick={() => relaunchApp()}
+                onClick={handleRelaunch}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 <RefreshCw className="h-4 w-4" />

@@ -16,6 +16,7 @@ const apiDir = path.join(root, "app", "api");
 const apiTmpDir = path.join(root, "app", "_api.tauri-build-tmp");
 
 let moved = false;
+let exitCode = 0;
 try {
   if (existsSync(apiDir)) {
     renameSync(apiDir, apiTmpDir);
@@ -29,11 +30,14 @@ try {
     env: { ...process.env, TAURI_BUILD: "true" },
   });
 
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
+  // Record the failure but don't exit here: exiting inside `try` would skip the
+  // `finally` below and leave app/api renamed away, breaking the web app until
+  // it's manually restored.
+  exitCode = result.status ?? 1;
 } finally {
   if (moved) {
     renameSync(apiTmpDir, apiDir);
   }
 }
+
+process.exit(exitCode);

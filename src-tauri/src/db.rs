@@ -8,6 +8,13 @@ use std::sync::Mutex;
 const SNIPPET_COLUMNS: &str =
     "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at";
 
+/// Escape LIKE metacharacters so user input matches literally. Must be paired
+/// with an `ESCAPE '\'` clause on the LIKE. Without this, a search or tag value
+/// containing `%` or `_` would act as a wildcard (e.g. `%` matches everything).
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snippet {
     pub id: i64,
@@ -59,7 +66,13 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
         tags,
         favorite: favorite != 0,
         model: row.get(7)?,
-        copy_count: row.get(8)?,
+        // Read as i64, but fall back to a truncated REAL: SQLite's integer
+        // arithmetic can overflow a copy_count into a float, and this column has
+        // seen bad writes before. A defensive read keeps one odd row from
+        // erroring the whole list.
+        copy_count: row
+            .get::<_, i64>(8)
+            .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
         last_used_at: row.get(9)?,
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
@@ -81,8 +94,29 @@ impl Database {
 
         let conn = Connection::open(path)?;
 
+        // Wait (rather than failing instantly) if another connection holds a
+        // write lock — otherwise a transient SQLITE_BUSY during startup could
+        // abort the migrations below and leave the schema half-upgraded.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+
         // Enable WAL mode for better concurrency
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
+
+        // A Unicode-aware lowercase, used for case-insensitive search. SQLite's
+        // built-in LOWER() only folds ASCII, so without this a search for
+        // "Übersetzung" would miss rows containing "übersetzung" on the desktop
+        // while matching on the web. Registering our own keeps the two runtimes
+        // consistent and correct for non-ASCII text.
+        conn.create_scalar_function(
+            "ulower",
+            1,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8
+                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| {
+                let s: String = ctx.get(0)?;
+                Ok(s.to_lowercase())
+            },
+        )?;
 
         // Initialize the database schema
         conn.execute_batch(
@@ -100,12 +134,27 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);"
         )?;
 
-        // Migrations: add columns introduced after the initial schema. Each
-        // ALTER errors if the column already exists, so the result is ignored.
-        let _ = conn.execute("ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0", []);
-        let _ = conn.execute("ALTER TABLE snippets ADD COLUMN model TEXT NOT NULL DEFAULT ''", []);
-        let _ = conn.execute("ALTER TABLE snippets ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 0", []);
-        let _ = conn.execute("ALTER TABLE snippets ADD COLUMN last_used_at TEXT", []);
+        // Migrations: add columns introduced after the initial schema. Guard each
+        // on the current column set (rather than running the ALTER and ignoring
+        // the error) so a genuine migration failure surfaces instead of being
+        // silently swallowed and breaking every later query.
+        let existing: std::collections::HashSet<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(snippets)")?;
+            let cols = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            cols.filter_map(|c| c.ok()).collect()
+        };
+        if !existing.contains("favorite") {
+            conn.execute("ALTER TABLE snippets ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !existing.contains("model") {
+            conn.execute("ALTER TABLE snippets ADD COLUMN model TEXT NOT NULL DEFAULT ''", [])?;
+        }
+        if !existing.contains("copy_count") {
+            conn.execute("ALTER TABLE snippets ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !existing.contains("last_used_at") {
+            conn.execute("ALTER TABLE snippets ADD COLUMN last_used_at TEXT", [])?;
+        }
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -141,28 +190,32 @@ impl Database {
 
         if let Some(t) = tag {
             if !t.is_empty() {
-                sql.push_str(" AND tags LIKE ?");
-                params_vec.push(Box::new(format!("%\"{}%", t)));
+                // Match the exact tag inside the JSON array (delimited by quotes).
+                // The closing quote matters: `%"rust"%` must not also match `"rustacean"`.
+                sql.push_str(" AND tags LIKE ? ESCAPE '\\'");
+                params_vec.push(Box::new(format!("%\"{}\"%", escape_like(t))));
             }
         }
 
         if let Some(s) = search {
             if !s.is_empty() {
-                let search_pattern = format!("%{}%", s.to_lowercase());
+                // Lower both the needle (here, in Rust) and the columns (via the
+                // registered Unicode-aware `ulower`) so non-ASCII search works.
+                let search_pattern = format!("%{}%", escape_like(&s.to_lowercase()));
                 let mode = search_mode.unwrap_or("all");
 
                 match mode {
                     "title" => {
-                        sql.push_str(" AND (LOWER(title) LIKE ? OR LOWER(description) LIKE ?)");
+                        sql.push_str(" AND (ulower(title) LIKE ? ESCAPE '\\' OR ulower(description) LIKE ? ESCAPE '\\')");
                         params_vec.push(Box::new(search_pattern.clone()));
                         params_vec.push(Box::new(search_pattern));
                     }
                     "tags" => {
-                        sql.push_str(" AND LOWER(tags) LIKE ?");
+                        sql.push_str(" AND ulower(tags) LIKE ? ESCAPE '\\'");
                         params_vec.push(Box::new(search_pattern));
                     }
                     _ => {
-                        sql.push_str(" AND (LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(tags) LIKE ? OR LOWER(model) LIKE ?)");
+                        sql.push_str(" AND (ulower(title) LIKE ? ESCAPE '\\' OR ulower(description) LIKE ? ESCAPE '\\' OR ulower(tags) LIKE ? ESCAPE '\\' OR ulower(model) LIKE ? ESCAPE '\\')");
                         params_vec.push(Box::new(search_pattern.clone()));
                         params_vec.push(Box::new(search_pattern.clone()));
                         params_vec.push(Box::new(search_pattern.clone()));
@@ -218,7 +271,8 @@ impl Database {
         let id = conn.last_insert_rowid();
         drop(conn);
 
-        self.get_snippet(id).map(|s| s.unwrap())
+        self.get_snippet(id)?
+            .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
     }
 
     pub fn update_snippet(&self, id: i64, input: UpdateSnippetInput) -> Result<Option<Snippet>> {
@@ -300,6 +354,7 @@ impl Database {
         let id = conn.last_insert_rowid();
         drop(conn);
 
-        self.get_snippet(id).map(|x| x.unwrap())
+        self.get_snippet(id)?
+            .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
     }
 }

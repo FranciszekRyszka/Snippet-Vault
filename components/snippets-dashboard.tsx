@@ -65,16 +65,44 @@ export function SnippetsDashboard() {
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [importNotice, setImportNotice] = useState<string | null>(null);
+  const importTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Transient error toast for failed writes (delete/save/undo/favorite).
+  const [actionError, setActionError] = useState<string | null>(null);
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Monotonic fetch counter so a slow, stale response can't overwrite a newer one.
+  const fetchSeq = useRef(0);
+
+  // Ids removed optimistically by a delete. Filtered out of any fetch result so
+  // a refetch already in flight when the delete happened can't re-add the row.
+  const pendingDeletes = useRef<Set<number>>(new Set());
 
   const debouncedSearch = useDebounce(search, 300);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const showError = useCallback((message: string) => {
+    setActionError(message);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    errorTimer.current = setTimeout(() => setActionError(null), 5000);
+  }, []);
+
+  const showImportNotice = useCallback((message: string) => {
+    setImportNotice(message);
+    if (importTimer.current) clearTimeout(importTimer.current);
+    importTimer.current = setTimeout(() => setImportNotice(null), 4000);
+  }, []);
+
   // Restore the saved view preference (client-only to avoid hydration mismatch).
   useEffect(() => {
-    const saved = localStorage.getItem("snipvault:view");
-    if (saved === "grid" || saved === "list") setView(saved);
+    try {
+      const saved = localStorage.getItem("snipvault:view");
+      if (saved === "grid" || saved === "list") setView(saved);
+    } catch {
+      // ignore storage failures (e.g. private mode / blocked storage)
+    }
   }, []);
 
   const changeView = (v: ViewMode) => {
@@ -86,8 +114,19 @@ export function SnippetsDashboard() {
     }
   };
 
+  // Drop any ids currently being deleted, so a fetch that was already in flight
+  // when a delete happened doesn't re-add the removed row.
+  const dropPendingDeletes = useCallback(
+    (list: Snippet[]) =>
+      pendingDeletes.current.size
+        ? list.filter((s) => !pendingDeletes.current.has(s.id))
+        : list,
+    []
+  );
+
   // Fetch snippets
   const fetchSnippets = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -105,23 +144,26 @@ export function SnippetsDashboard() {
       if (activeTag) params.tag = activeTag;
 
       const data = await getSnippets(params);
-      setSnippets(data);
+      // Ignore this response if a newer fetch has started since.
+      if (seq !== fetchSeq.current) return;
+      setSnippets(dropPendingDeletes(data));
     } catch (err) {
+      if (seq !== fetchSeq.current) return;
       setError(err instanceof Error ? err : new Error("Failed to load snippets"));
     } finally {
-      setIsLoading(false);
+      if (seq === fetchSeq.current) setIsLoading(false);
     }
-  }, [debouncedSearch, language, activeTag, searchMode]);
+  }, [debouncedSearch, language, activeTag, searchMode, dropPendingDeletes]);
 
   // Fetch all snippets for tag cloud
   const fetchAllSnippets = useCallback(async () => {
     try {
       const data = await getSnippets();
-      setAllSnippets(data);
+      setAllSnippets(dropPendingDeletes(data));
     } catch {
       // Silently fail for tag cloud
     }
-  }, []);
+  }, [dropPendingDeletes]);
 
   // On mount, check whether a database is configured (desktop first-run).
   useEffect(() => {
@@ -151,9 +193,11 @@ export function SnippetsDashboard() {
     if (dbReady) fetchAllSnippets();
   }, [dbReady, fetchAllSnippets]);
 
-  // Clear any pending undo timer on unmount.
+  // Clear any pending timers on unmount.
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (importTimer.current) clearTimeout(importTimer.current);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
   }, []);
 
   // Collect all unique tags from all snippets for the tag cloud
@@ -205,7 +249,11 @@ export function SnippetsDashboard() {
     setSaving(true);
     try {
       if (editingSnippet) {
-        await updateSnippet(editingSnippet.id, data);
+        const updated = await updateSnippet(editingSnippet.id, data);
+        // A null result means the row no longer exists (e.g. deleted elsewhere).
+        if (updated === null) {
+          throw new Error("This prompt no longer exists — it may have been deleted.");
+        }
       } else {
         await createSnippet(data);
       }
@@ -214,7 +262,9 @@ export function SnippetsDashboard() {
       setShowForm(false);
       setEditingSnippet(null);
     } catch (err) {
+      // Keep the form open so the user's edits aren't lost, and tell them why.
       console.error("Failed to save snippet:", err);
+      showError(err instanceof Error ? err.message : "Failed to save the prompt.");
     } finally {
       setSaving(false);
     }
@@ -224,6 +274,7 @@ export function SnippetsDashboard() {
   // the prompt faithfully (favorite, model, usage, timestamps) via restore.
   const handleDelete = async (snippet: Snippet) => {
     setDetailId(null);
+    pendingDeletes.current.add(snippet.id);
     setSnippets((prev) => prev.filter((s) => s.id !== snippet.id));
     setAllSnippets((prev) => prev.filter((s) => s.id !== snippet.id));
     setPendingUndo(snippet);
@@ -232,9 +283,13 @@ export function SnippetsDashboard() {
     try {
       await deleteSnippet(snippet.id);
     } catch (err) {
+      // The delete failed server-side; undo the optimistic removal and hide the
+      // (now-misleading) Undo toast so a later click can't create a duplicate.
       console.error("Failed to delete snippet:", err);
+      pendingDeletes.current.delete(snippet.id);
       if (undoTimer.current) clearTimeout(undoTimer.current);
       setPendingUndo(null);
+      showError(err instanceof Error ? err.message : "Failed to delete the prompt.");
       await fetchSnippets();
       await fetchAllSnippets();
     }
@@ -250,7 +305,12 @@ export function SnippetsDashboard() {
       await fetchSnippets();
       await fetchAllSnippets();
     } catch (err) {
+      // Restore failed — re-offer Undo so the deletion isn't silently unrecoverable.
       console.error("Failed to restore snippet:", err);
+      showError(err instanceof Error ? err.message : "Couldn't restore the prompt.");
+      setPendingUndo(snip);
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setPendingUndo(null), 6000);
     }
   };
 
@@ -263,6 +323,7 @@ export function SnippetsDashboard() {
       await fetchSnippets();
     } catch (err) {
       console.error("Failed to update favorite:", err);
+      showError(err instanceof Error ? err.message : "Failed to update the pin.");
       setSnippets((prev) =>
         prev.map((s) => (s.id === id ? { ...s, favorite: !favorite } : s))
       );
@@ -287,50 +348,75 @@ export function SnippetsDashboard() {
   const handleImportClick = () => fileInputRef.current?.click();
 
   // Import prompts from a JSON file — either a single exported prompt (an object)
-  // or an array of them. Invalid entries are skipped rather than aborting.
+  // or an array of them. Each item is imported independently: a failing item is
+  // skipped and tallied rather than aborting the whole import, and the list is
+  // always refreshed afterward so successful items are visible.
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // let the same file be re-selected later
     if (!file) return;
+    let imported = 0;
+    let skipped = 0;
     try {
       const parsed = JSON.parse(await file.text());
       const items = Array.isArray(parsed) ? parsed : [parsed];
       const validLanguages = new Set(LANGUAGES.map((l) => l.value));
-      let imported = 0;
       for (const item of items) {
+        // Skip anything without a usable title and body. An empty-string title
+        // is invalid (the backend rejects it), so require non-empty after trim.
         if (
           !item ||
           typeof item.title !== "string" ||
-          typeof item.code !== "string"
+          !item.title.trim() ||
+          typeof item.code !== "string" ||
+          !item.code
         ) {
+          skipped++;
           continue;
         }
+        // Normalize to the same shape the web API enforces, so importing on the
+        // desktop (whose backend is more permissive) can't store invalid rows.
         const input: CreateSnippetInput = {
-          title: item.title.slice(0, 255),
+          title: item.title.trim().slice(0, 255),
           description:
             typeof item.description === "string" ? item.description : "",
           code: item.code,
           language: validLanguages.has(item.language) ? item.language : "text",
           tags: Array.isArray(item.tags)
-            ? item.tags.filter((t: unknown): t is string => typeof t === "string")
+            ? item.tags
+                .filter((t: unknown): t is string => typeof t === "string")
+                .map((t: string) => t.trim().toLowerCase())
+                .filter(Boolean)
+                .slice(0, 20)
             : [],
-          model: typeof item.model === "string" ? item.model : "",
+          model:
+            typeof item.model === "string" ? item.model.trim().slice(0, 100) : "",
         };
-        await createSnippet(input);
-        imported++;
+        try {
+          await createSnippet(input);
+          imported++;
+        } catch (itemErr) {
+          console.error("Failed to import one prompt:", itemErr);
+          skipped++;
+        }
       }
-      await fetchSnippets();
-      await fetchAllSnippets();
-      setImportNotice(
+      showImportNotice(
         imported > 0
-          ? `Imported ${imported} prompt${imported !== 1 ? "s" : ""}.`
-          : "No valid prompts found in that file."
+          ? `Imported ${imported} prompt${imported !== 1 ? "s" : ""}${
+              skipped ? `, skipped ${skipped}` : ""
+            }.`
+          : skipped > 0
+            ? `No prompts imported (${skipped} skipped).`
+            : "No valid prompts found in that file."
       );
     } catch (err) {
+      // Only reached if the file itself isn't valid JSON.
       console.error("Import failed:", err);
-      setImportNotice("Couldn't import — is it a valid JSON export?");
+      showImportNotice("Couldn't read that file — is it a valid JSON export?");
+    } finally {
+      await fetchSnippets();
+      await fetchAllSnippets();
     }
-    setTimeout(() => setImportNotice(null), 4000);
   };
 
   const handleNewSnippet = useCallback(() => {
@@ -571,12 +657,30 @@ export function SnippetsDashboard() {
 
       {pendingUndo && (
         <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-lg border border-border bg-card px-4 py-2.5 text-sm shadow-lg">
-          <span className="text-foreground">Prompt deleted</span>
+          <span className="text-foreground">
+            Deleted{" "}
+            <span className="max-w-[16rem] truncate align-bottom font-medium">
+              &ldquo;{pendingUndo.title}&rdquo;
+            </span>
+          </span>
           <button
             onClick={handleUndo}
             className="font-medium text-primary transition-colors hover:underline"
           >
             Undo
+          </button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="fixed bottom-20 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-destructive/70 transition-colors hover:text-destructive"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}

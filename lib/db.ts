@@ -58,11 +58,25 @@ export type Snippet = {
   updated_at: string;
 };
 
+// Parse the stored JSON tags array, tolerating a corrupt/malformed cell rather
+// than throwing — one bad row must not 500 the entire list.
+function parseTags(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((t): t is string => typeof t === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 // Helper to convert DB row (with JSON tags) to Snippet type
 export function rowToSnippet(row: Record<string, unknown>): Snippet {
   return {
     ...row,
-    tags: JSON.parse((row.tags as string) || "[]"),
+    tags: parseTags(row.tags),
     favorite: Boolean(row.favorite),
     model: (row.model as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),

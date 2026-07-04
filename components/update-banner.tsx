@@ -29,12 +29,28 @@ export function UpdateBanner({ update, onDismiss }: UpdateBannerProps) {
     }
   };
 
+  const handleRelaunch = async () => {
+    try {
+      await relaunchApp();
+    } catch (err) {
+      // The update is installed; only the automatic restart failed.
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
       <Download className="h-4 w-4 shrink-0 text-primary" />
       <span className="flex-1 text-foreground">
         {phase === "done" ? (
-          <>Update to v{update.version} installed — restart to apply.</>
+          error ? (
+            <>
+              Update installed, but the restart failed: {error}. Please reopen
+              the app manually.
+            </>
+          ) : (
+            <>Update to v{update.version} installed — restart to apply.</>
+          )
         ) : phase === "error" ? (
           <>Update failed: {error}</>
         ) : (
@@ -49,7 +65,7 @@ export function UpdateBanner({ update, onDismiss }: UpdateBannerProps) {
         {phase === "done" ? (
           <button
             type="button"
-            onClick={() => relaunchApp()}
+            onClick={handleRelaunch}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <RefreshCw className="h-3.5 w-3.5" />

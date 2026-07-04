@@ -1,6 +1,7 @@
 import { db, rowToSnippet } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
+import { parseId, sanitizeTags, sanitizeModel } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -9,6 +10,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const numericId = parseId(id);
+  if (numericId === null) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   try {
     const body = await request.json();
     const { title, description, code, language, tags, model } = body;
@@ -34,12 +39,8 @@ export async function PUT(
       );
     }
 
-    const sanitizedTags = Array.isArray(tags)
-      ? tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 20)
-      : [];
-
-    const sanitizedModel =
-      typeof model === "string" ? model.trim().slice(0, 100) : "";
+    const sanitizedTags = sanitizeTags(tags);
+    const sanitizedModel = sanitizeModel(model);
 
     const stmt = db.prepare(`
       UPDATE snippets
@@ -54,7 +55,7 @@ export async function PUT(
       language,
       JSON.stringify(sanitizedTags),
       sanitizedModel,
-      parseInt(id)
+      numericId
     );
 
     if (result.changes === 0) {
@@ -64,7 +65,7 @@ export async function PUT(
       );
     }
 
-    const updated = db.prepare("SELECT * FROM snippets WHERE id = ?").get(parseInt(id)) as Record<string, unknown>;
+    const updated = db.prepare("SELECT * FROM snippets WHERE id = ?").get(numericId) as Record<string, unknown>;
 
     return NextResponse.json(rowToSnippet(updated));
   } catch (error) {
@@ -82,6 +83,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const numericId = parseId(id);
+  if (numericId === null) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   try {
     const body = await request.json();
     const { favorite } = body;
@@ -96,7 +101,7 @@ export async function PATCH(
     const stmt = db.prepare(
       "UPDATE snippets SET favorite = ? WHERE id = ?"
     );
-    const result = stmt.run(favorite ? 1 : 0, parseInt(id));
+    const result = stmt.run(favorite ? 1 : 0, numericId);
 
     if (result.changes === 0) {
       return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
@@ -104,7 +109,7 @@ export async function PATCH(
 
     const updated = db
       .prepare("SELECT * FROM snippets WHERE id = ?")
-      .get(parseInt(id)) as Record<string, unknown>;
+      .get(numericId) as Record<string, unknown>;
 
     return NextResponse.json(rowToSnippet(updated));
   } catch (error) {
@@ -121,9 +126,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const numericId = parseId(id);
+  if (numericId === null) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   try {
     const stmt = db.prepare("DELETE FROM snippets WHERE id = ?");
-    const result = stmt.run(parseInt(id));
+    const result = stmt.run(numericId);
 
     if (result.changes === 0) {
       return NextResponse.json(

@@ -67,10 +67,16 @@ export function SnippetDetail({
   }, [onClose]);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(snippet.code);
-    onCopied(snippet.id);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(snippet.code);
+      onCopied(snippet.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Clipboard can be blocked (permissions/insecure context). Don't show a
+      // false "copied" state; just log it.
+      console.error("Copy failed:", err);
+    }
   };
 
   const meta: { label: string; value: string }[] = [

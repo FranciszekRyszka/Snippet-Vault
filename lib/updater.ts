@@ -31,6 +31,12 @@ export type AvailableUpdate = {
   install: (onProgress?: (percent: number | null) => void) => Promise<void>;
 };
 
+// Guards against two install flows running at once. The update banner and the
+// Settings dialog each hold their own AvailableUpdate handle, so without this a
+// user could start a download from both and have two installs race the same
+// installer. Shared at module scope so it spans every handle.
+let installInProgress = false;
+
 export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   if (!isTauri()) return null;
   const { check } = await import("@tauri-apps/plugin-updater");
@@ -41,25 +47,36 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
     version: update.version,
     currentVersion: update.currentVersion,
     install: async (onProgress) => {
+      if (installInProgress) {
+        throw new Error("An update is already being installed.");
+      }
+      installInProgress = true;
       let total = 0;
       let downloaded = 0;
-      await update.downloadAndInstall((event) => {
-        switch (event.event) {
-          case "Started":
-            total = event.data.contentLength ?? 0;
-            onProgress?.(total ? 0 : null);
-            break;
-          case "Progress":
-            downloaded += event.data.chunkLength;
-            onProgress?.(
-              total ? Math.min(100, Math.round((downloaded / total) * 100)) : null
-            );
-            break;
-          case "Finished":
-            onProgress?.(100);
-            break;
-        }
-      });
+      try {
+        await update.downloadAndInstall((event) => {
+          switch (event.event) {
+            case "Started":
+              total = event.data.contentLength ?? 0;
+              onProgress?.(total ? 0 : null);
+              break;
+            case "Progress":
+              downloaded += event.data.chunkLength;
+              onProgress?.(
+                total ? Math.min(100, Math.round((downloaded / total) * 100)) : null
+              );
+              break;
+            case "Finished":
+              onProgress?.(100);
+              break;
+          }
+        });
+      } catch (err) {
+        // Allow a retry after a failed install; on success the flag stays set
+        // because the app is about to relaunch.
+        installInProgress = false;
+        throw err;
+      }
     },
   };
 }

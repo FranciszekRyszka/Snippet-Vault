@@ -1,4 +1,5 @@
 mod db;
+mod validation;
 
 use db::{Database, CreateSnippetInput, UpdateSnippetInput, Snippet};
 use serde::{Deserialize, Serialize};
@@ -111,6 +112,17 @@ fn backup_database(state: State<Mutex<AppState>>, destination: String) -> Result
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    // Refuse to back up onto the live database file. SQLite's online backup
+    // would overwrite the source it is concurrently reading and corrupt the
+    // only copy. Compare canonical paths so ".", symlinks, etc. can't sneak past;
+    // fall back to the raw paths when the destination doesn't exist yet.
+    let same_file = match (dest.canonicalize(), db.path().canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => dest == db.path(),
+    };
+    if same_file {
+        return Err("Choose a different file — you can't back up onto the live database.".to_string());
+    }
     db.backup_to(&dest).map_err(|e| e.to_string())?;
     Ok(destination)
 }
@@ -137,6 +149,7 @@ fn get_snippets(
 
 #[tauri::command]
 fn create_snippet(state: State<Mutex<AppState>>, input: CreateSnippetInput) -> Result<Snippet, String> {
+    let input = validation::sanitize_create(input)?;
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
     db.create_snippet(input).map_err(|e| e.to_string())
@@ -144,6 +157,7 @@ fn create_snippet(state: State<Mutex<AppState>>, input: CreateSnippetInput) -> R
 
 #[tauri::command]
 fn update_snippet(state: State<Mutex<AppState>>, id: i64, input: UpdateSnippetInput) -> Result<Option<Snippet>, String> {
+    let input = validation::sanitize_update(input)?;
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
     db.update_snippet(id, input).map_err(|e| e.to_string())
@@ -172,6 +186,7 @@ fn record_copy(state: State<Mutex<AppState>>, id: i64) -> Result<Option<Snippet>
 
 #[tauri::command]
 fn restore_snippet(state: State<Mutex<AppState>>, snippet: Snippet) -> Result<Snippet, String> {
+    let snippet = validation::sanitize_restore(snippet)?;
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
     db.restore_snippet(snippet).map_err(|e| e.to_string())

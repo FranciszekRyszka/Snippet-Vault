@@ -123,13 +123,19 @@ export function SnippetForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Guard against a double-submit: the button's `disabled` only applies after
+    // a re-render, so a fast second click/Enter could fire onSave twice.
+    if (saving) return;
     if (!title.trim() || !code.trim()) return;
-    // Add any remaining tag input
-    const finalTags = tagInput.trim()
-      ? [...tags, tagInput.trim().toLowerCase()].filter(
-          (t, i, arr) => arr.indexOf(t) === i
-        )
-      : tags;
+    // Add any remaining tag input, keeping the same dedupe + 20-tag cap the tag
+    // editor enforces so a trailing entry can't slip past the limit.
+    const finalTags = (
+      tagInput.trim()
+        ? [...tags, tagInput.trim().toLowerCase()].filter(
+            (t, i, arr) => arr.indexOf(t) === i
+          )
+        : tags
+    ).slice(0, 20);
     onSave({
       title: title.trim(),
       description: description.trim(),

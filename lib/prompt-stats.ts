@@ -13,7 +13,9 @@ export type PromptStats = {
 };
 
 export function getPromptStats(text: string): PromptStats {
-  const chars = text.length;
+  // Count Unicode code points, not UTF-16 code units, so an astral character
+  // (emoji, some CJK) counts as one character rather than two.
+  const chars = [...text].length;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const tokens = Math.ceil(chars / 4);
   return { chars, words, tokens };
