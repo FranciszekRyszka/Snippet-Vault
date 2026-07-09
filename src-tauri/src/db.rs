@@ -358,3 +358,137 @@ impl Database {
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
     }
 }
+
+#[cfg(test)]
+mod sqli_tests {
+    //! Adversarial SQL-injection tests for the desktop (rusqlite) backend.
+    //! Goal: prove that no user-controlled string — search term, tag, language,
+    //! search mode, or any write field — can drop the table, delete rows it
+    //! shouldn't, or otherwise execute as SQL. Payloads must be stored/matched
+    //! as inert literal data.
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Classic injection / stacked-query / wildcard payloads.
+    const PAYLOADS: &[&str] = &[
+        "'; DROP TABLE snippets; --",
+        "'); DROP TABLE snippets; --",
+        "1; DROP TABLE snippets",
+        "' OR '1'='1",
+        "\" OR \"\"=\"",
+        "'; DELETE FROM snippets; --",
+        "' UNION SELECT * FROM sqlite_master --",
+        "%",
+        "_",
+        "\\",
+        "robert'); DROP TABLE snippets;--", // little Bobby Tables
+    ];
+
+    fn temp_db() -> Database {
+        let mut p = std::env::temp_dir();
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("snipvault_sqli_{n}.db"));
+        Database::open(&p).unwrap()
+    }
+
+    fn mk(title: &str, code: &str) -> CreateSnippetInput {
+        CreateSnippetInput {
+            title: title.into(),
+            description: Some("desc".into()),
+            code: code.into(),
+            language: "text".into(),
+            tags: Some(vec!["rust".into()]),
+            model: None,
+        }
+    }
+
+    fn table_exists(db: &Database) -> bool {
+        let conn = db.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='snippets'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    #[test]
+    fn read_filters_cannot_execute_sql() {
+        let db = temp_db();
+        db.create_snippet(mk("hello", "world")).unwrap();
+        db.create_snippet(mk("second", "row")).unwrap();
+
+        for p in PAYLOADS {
+            // Every filter dimension, plus a malicious search_mode.
+            db.get_all_snippets(Some(p), None, None, Some("all")).unwrap();
+            db.get_all_snippets(None, Some(p), None, None).unwrap();
+            db.get_all_snippets(None, None, Some(p), None).unwrap();
+            db.get_all_snippets(Some(p), Some(p), Some(p), Some(p)).unwrap();
+            assert!(table_exists(&db), "table dropped by read payload {p:?}");
+        }
+        // Both seed rows survive every payload.
+        assert_eq!(db.get_all_snippets(None, None, None, None).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn write_fields_are_stored_not_executed() {
+        let db = temp_db();
+        db.create_snippet(mk("hello", "world")).unwrap();
+
+        // Insert each payload as title/code/tag; none may execute.
+        for p in PAYLOADS {
+            let mut input = mk(p, p);
+            input.tags = Some(vec![p.to_string()]);
+            let created = db.create_snippet(input).unwrap();
+            // Round-trips as literal data.
+            assert_eq!(created.title, *p);
+            assert_eq!(created.code, *p);
+            assert!(table_exists(&db), "table dropped by write payload {p:?}");
+        }
+
+        // update / delete / favorite / restore with a payload id-less path.
+        let id = db.create_snippet(mk("target", "x")).unwrap().id;
+        db.update_snippet(
+            id,
+            UpdateSnippetInput {
+                title: "'; DROP TABLE snippets; --".into(),
+                description: None,
+                code: "'; DELETE FROM snippets --".into(),
+                language: "text".into(),
+                tags: Some(vec!["'; DROP TABLE snippets; --".into()]),
+                model: Some("'); DROP TABLE snippets;--".into()),
+            },
+        )
+        .unwrap();
+        assert!(table_exists(&db));
+
+        // The DROP string was stored literally — we can find it by title search.
+        let hits = db
+            .get_all_snippets(Some("drop table snippets"), None, None, Some("title"))
+            .unwrap();
+        assert!(
+            hits.iter().any(|s| s.title.contains("DROP TABLE")),
+            "payload was not stored as literal data"
+        );
+
+        // Seed + all payload rows + target row all still present.
+        let total = db.get_all_snippets(None, None, None, None).unwrap().len();
+        assert_eq!(total, 1 + PAYLOADS.len() + 1);
+    }
+
+    #[test]
+    fn wildcard_payloads_match_literally_not_as_wildcards() {
+        let db = temp_db();
+        db.create_snippet(mk("alpha", "one")).unwrap();
+        db.create_snippet(mk("beta", "two")).unwrap();
+        // A search of "%" must NOT match everything — it's escaped to a literal %.
+        let pct = db.get_all_snippets(Some("%"), None, None, Some("all")).unwrap();
+        assert_eq!(pct.len(), 0, "'%' acted as a wildcard instead of a literal");
+        let underscore = db.get_all_snippets(Some("_"), None, None, Some("all")).unwrap();
+        assert_eq!(underscore.len(), 0, "'_' acted as a wildcard instead of a literal");
+    }
+}
