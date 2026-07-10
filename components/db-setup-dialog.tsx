@@ -12,12 +12,38 @@ type DbSetupDialogProps = {
 // First-run modal shown (desktop only) when no database has been configured.
 // Lets the user create a brand-new database or point to an existing snippets.db.
 export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
-  const [busy, setBusy] = useState<"new" | "existing" | null>(null);
+  const [busy, setBusy] = useState<"new" | "existing" | "default" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Create a new database at a location the user picks via a native save dialog.
   const handleCreateNew = async () => {
     setError(null);
     setBusy("new");
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const selected = await save({
+        title: "Choose where to save your new database",
+        defaultPath: "snippets.db",
+        filters: [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }],
+      });
+      if (typeof selected !== "string") {
+        // User cancelled the picker.
+        setBusy(null);
+        return;
+      }
+      await initializeNewDb(selected);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
+  };
+
+  // Fallback for users who don't care where it lives: use the default app-data
+  // folder without prompting for a location.
+  const handleCreateDefault = async () => {
+    setError(null);
+    setBusy("default");
     try {
       await initializeNewDb();
       onComplete();
@@ -81,7 +107,7 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
                 {busy === "new" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Start fresh. Stored in the default app data folder.
+                Start fresh. Pick the folder where your snippets.db is saved.
               </p>
             </div>
           </button>
@@ -104,6 +130,16 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
             </div>
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={handleCreateDefault}
+          disabled={busy !== null}
+          className="mt-3 inline-flex items-center gap-1.5 self-start text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+        >
+          {busy === "default" && <Loader2 className="h-3 w-3 animate-spin" />}
+          Or just use the default app data folder
+        </button>
 
         {error && (
           <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
