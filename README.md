@@ -104,6 +104,23 @@ Runs `pnpm build:tauri`, which produces a static export in `out/` (the API route
 
   You can back up the database at any time from **Settings → Back up database**.
 
+## macOS: "SnipVault is damaged and can't be opened"
+
+SnipVault is **not signed with a paid Apple Developer certificate**, so when you download the `.dmg` from the Releases page, macOS Gatekeeper quarantines it and — on Apple Silicon especially — shows *"SnipVault is damaged and can't be opened. You should move it to the Trash."* The app is not actually damaged; this is Gatekeeper blocking an unsigned, un-notarized app. To open it:
+
+1. Open the `.dmg` and drag **SnipVault.app** into your **Applications** folder.
+2. Open **Terminal** and run:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/SnipVault.app
+   ```
+
+3. Launch SnipVault from Applications as normal.
+
+You only need to do this once per install. Choose the **aarch64** `.dmg` for Apple Silicon (M1–M4) Macs, or the **x64** `.dmg` for Intel Macs.
+
+> A permanent fix (no Terminal step for users) requires signing and notarizing the app with an Apple Developer ID, which needs a paid Apple Developer Program membership.
+
 ## Project Structure
 
 ```

@@ -41,12 +41,35 @@ jobs:
         with:
           script: |
             const version = process.env.APP_VERSION;
+            // SnipVault isn't signed with a paid Apple Developer certificate, so
+            // macOS Gatekeeper flags the downloaded app as "damaged". Ship the
+            // one-time un-quarantine steps in every release body so mac users can
+            // actually open it. (Built as a joined array to avoid clashing with
+            // the workflow's own backtick/template syntax.)
+            const body = [
+              'See the assets below to download and install this version.',
+              '',
+              '### 🍎 macOS: “SnipVault is damaged and can’t be opened”',
+              '',
+              'SnipVault is not signed with a paid Apple Developer certificate, so macOS Gatekeeper blocks it on first launch. The app is safe — this warning is expected for open-source apps distributed outside the App Store. To open it:',
+              '',
+              '1. Open the `.dmg` and drag **SnipVault.app** into your **Applications** folder.',
+              '2. Open **Terminal** and run:',
+              '',
+              '   ```',
+              '   xattr -dr com.apple.quarantine /Applications/SnipVault.app',
+              '   ```',
+              '',
+              '3. Launch SnipVault from Applications as normal.',
+              '',
+              'You only need to do this once per install. Choose the **aarch64** `.dmg` for Apple Silicon (M1–M4) Macs, or the **x64** `.dmg` for Intel Macs.',
+            ].join('\n');
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: `v${version}`,
               name: `SnipVault v${version}`,
-              body: 'See the assets below to download and install this version.',
+              body,
               draft: true,
               prerelease: false,
             });
