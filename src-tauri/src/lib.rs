@@ -13,10 +13,22 @@ struct AppState {
     db: Option<Database>,
 }
 
-/// Persisted app configuration (currently just the database location).
+/// A configured sync server. When present, the app works against this server
+/// instead of the local database.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct RemoteConfig {
+    url: String,
+    token: String,
+}
+
+/// Persisted app configuration: the local database location and, optionally, a
+/// sync server. Both can be set at once — the remote is what's *active*, and
+/// clearing it falls back to the local database.
 #[derive(Serialize, Deserialize, Default)]
 struct AppConfig {
     db_path: Option<String>,
+    #[serde(default)]
+    remote: Option<RemoteConfig>,
 }
 
 /// Reported to the frontend on startup to decide whether to show first-run setup.
@@ -61,7 +73,11 @@ fn set_active_db(state: &State<Mutex<AppState>>, path: &Path) -> Result<String, 
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.db = Some(db);
     }
-    save_config(&AppConfig { db_path: Some(path_str.clone()) })?;
+    // Preserve any other config (e.g. a saved sync server) by editing the
+    // loaded config rather than overwriting it with a db_path-only value.
+    let mut cfg = load_config();
+    cfg.db_path = Some(path_str.clone());
+    save_config(&cfg)?;
     Ok(path_str)
 }
 
@@ -125,6 +141,36 @@ fn backup_database(state: State<Mutex<AppState>>, destination: String) -> Result
     }
     db.backup_to(&dest).map_err(|e| e.to_string())?;
     Ok(destination)
+}
+
+// ---- Sync server (remote) configuration -----------------------------------
+
+/// Return the saved sync server, if the app is configured to use one. The
+/// frontend uses this to decide between remote and local mode at startup.
+#[tauri::command]
+fn get_remote_config() -> Result<Option<RemoteConfig>, String> {
+    Ok(load_config().remote)
+}
+
+/// Save the sync server to use. `url` is normalized (trailing slash trimmed).
+/// The local db_path is left untouched so disconnecting can fall back to it.
+#[tauri::command]
+fn set_remote_config(url: String, token: String) -> Result<(), String> {
+    let url = url.trim().trim_end_matches('/').to_string();
+    if url.is_empty() {
+        return Err("Server URL is required".to_string());
+    }
+    let mut cfg = load_config();
+    cfg.remote = Some(RemoteConfig { url, token });
+    save_config(&cfg)
+}
+
+/// Forget the sync server and return to local mode.
+#[tauri::command]
+fn clear_remote_config() -> Result<(), String> {
+    let mut cfg = load_config();
+    cfg.remote = None;
+    save_config(&cfg)
 }
 
 // ---- Snippet CRUD commands ------------------------------------------------
@@ -213,11 +259,12 @@ pub fn run() {
         if path.exists() {
             if let Ok(db) = Database::open(&path) {
                 app_state.db = Some(db);
-                // Persist the path if it was only inferred (no config yet).
+                // Persist the path if it was only inferred (no config yet),
+                // keeping any other fields already in the config.
                 if cfg.db_path.is_none() {
-                    let _ = save_config(&AppConfig {
-                        db_path: Some(path.to_string_lossy().into_owned()),
-                    });
+                    let mut merged = load_config();
+                    merged.db_path = Some(path.to_string_lossy().into_owned());
+                    let _ = save_config(&merged);
                 }
             }
         }
@@ -227,6 +274,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_http::init())
         .manage(Mutex::new(app_state))
         .invoke_handler(tauri::generate_handler![
             get_snippets,
@@ -241,6 +289,9 @@ pub fn run() {
             use_existing_db,
             get_database_path,
             backup_database,
+            get_remote_config,
+            set_remote_config,
+            clear_remote_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

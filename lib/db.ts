@@ -4,6 +4,13 @@ import path from "path";
 const dbPath = path.join(process.cwd(), "data", "snippets.db");
 const db = new Database(dbPath);
 
+// Wait (rather than failing instantly) if another connection holds a write
+// lock. Without this, concurrent opens — e.g. Next.js evaluating several API
+// route modules in parallel during a build, or overlapping requests on the
+// sync server — can hit SQLITE_BUSY while the schema is being set up. Mirrors
+// the desktop (rusqlite) backend, which sets the same 5s timeout.
+db.pragma("busy_timeout = 5000");
+
 // Enable WAL mode for better concurrency
 db.pragma("journal_mode = WAL");
 

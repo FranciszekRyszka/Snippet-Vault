@@ -1,0 +1,26 @@
+# SnipVault sync server.
+#
+#   1. Copy .env.example to .env and set a strong SNIPVAULT_TOKEN.
+#   2. docker compose up -d
+#   3. Point each SnipVault desktop app at http://<this-host>:3000 with the token.
+#
+# The library is stored in the named volume `snipvault-data`, so it survives
+# container rebuilds and image updates.
+
+services:
+  snipvault:
+    build: .
+    # Or pull a prebuilt image instead of building locally:
+    # image: ghcr.io/franciszekryszka/snippet-vault:latest
+    container_name: snipvault
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Required for a real deployment. If omitted, the API is UNAUTHENTICATED.
+      SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:?Set SNIPVAULT_TOKEN in your .env file}
+    volumes:
+      - snipvault-data:/app/data
+
+volumes:
+  snipvault-data:

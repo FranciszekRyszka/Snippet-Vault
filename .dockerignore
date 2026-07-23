@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+.git
+.gitignore
+src-tauri/target
+data
+*.db
+*.db-wal
+*.db-shm
+.env
+.env*.local
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store
+scratchpad

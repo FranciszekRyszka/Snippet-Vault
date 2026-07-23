@@ -25,6 +25,7 @@ import {
   recordCopy,
   restoreSnippet,
   getInitStatus,
+  getRemoteConfig,
   isTauri,
   type Snippet,
   type CreateSnippetInput,
@@ -165,13 +166,32 @@ export function SnippetsDashboard() {
     }
   }, [dropPendingDeletes]);
 
-  // On mount, check whether a database is configured (desktop first-run).
+  // Decide whether the app is ready to load snippets. A configured sync server
+  // takes precedence over local first-run setup — in remote mode there's no
+  // local database to create, so we skip straight to ready. Otherwise fall back
+  // to the desktop first-run check.
+  const refreshReady = useCallback(async () => {
+    try {
+      if (await getRemoteConfig()) {
+        setDbReady(true);
+        return;
+      }
+    } catch {
+      // Couldn't read remote config; treat as local mode.
+    }
+    try {
+      const status = await getInitStatus();
+      setDbReady(status.initialized);
+    } catch {
+      setDbReady(false);
+    }
+  }, []);
+
+  // On mount, work out the active data source (desktop first-run / sync server).
   useEffect(() => {
     setDesktop(isTauri());
-    getInitStatus()
-      .then((status) => setDbReady(status.initialized))
-      .catch(() => setDbReady(false));
-  }, []);
+    refreshReady();
+  }, [refreshReady]);
 
   // On startup, look for an app update (desktop only, and only if the user
   // hasn't disabled automatic checks in Settings). Failures are silent.
@@ -693,6 +713,9 @@ export function SnippetsDashboard() {
         <SettingsDialog
           onClose={() => setShowSettings(false)}
           onDbChanged={() => {
+            // Covers switching local DB file and connecting/disconnecting a
+            // sync server: re-evaluate the data source, then reload.
+            refreshReady();
             fetchSnippets();
             fetchAllSnippets();
           }}

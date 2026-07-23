@@ -1,8 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Database, FolderOpen, FilePlus2, Loader2 } from "lucide-react";
-import { initializeNewDb, useExistingDb } from "@/lib/tauri-api";
+import {
+  Database,
+  FolderOpen,
+  FilePlus2,
+  Loader2,
+  Server,
+  Plug,
+} from "lucide-react";
+import { initializeNewDb, useExistingDb, connectRemote } from "@/lib/tauri-api";
 
 type DbSetupDialogProps = {
   // Called once a database has been created or selected.
@@ -12,8 +19,16 @@ type DbSetupDialogProps = {
 // First-run modal shown (desktop only) when no database has been configured.
 // Lets the user create a brand-new database or point to an existing snippets.db.
 export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
-  const [busy, setBusy] = useState<"new" | "existing" | "default" | null>(null);
+  const [busy, setBusy] = useState<
+    "new" | "existing" | "default" | "remote" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync-server option: revealed inline when the user picks "Connect to a
+  // sync server" so a fresh install can go straight to remote mode.
+  const [showConnect, setShowConnect] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
 
   // Create a new database at a location the user picks via a native save dialog.
   const handleCreateNew = async () => {
@@ -77,6 +92,19 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
     }
   };
 
+  // Verify and save a sync-server connection, then enter remote mode.
+  const handleConnect = async () => {
+    setError(null);
+    setBusy("remote");
+    try {
+      await connectRemote(urlInput, tokenInput);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-lg">
@@ -129,6 +157,61 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
               </p>
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowConnect((v) => !v)}
+            disabled={busy !== null}
+            className="flex items-start gap-3 rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent disabled:opacity-50"
+          >
+            <Server className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                Connect to a sync server
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Share one library across your computers via a self-hosted
+                server.
+              </p>
+            </div>
+          </button>
+
+          {showConnect && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
+              <input
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                placeholder="http://192.168.1.50:3000"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                disabled={busy !== null}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="Access token"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                disabled={busy !== null}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={handleConnect}
+                disabled={busy !== null || !urlInput.trim() || !tokenInput}
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {busy === "remote" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plug className="h-4 w-4" />
+                )}
+                Test &amp; connect
+              </button>
+            </div>
+          )}
         </div>
 
         <button
