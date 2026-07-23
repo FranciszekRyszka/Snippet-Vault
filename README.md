@@ -104,6 +104,24 @@ Runs `pnpm build:tauri`, which produces a static export in `out/` (the API route
 
   You can back up the database at any time from **Settings → Back up database**.
 
+## Sync across computers
+
+Run SnipVault on a machine on your network (a homeserver, NAS, or spare PC) and
+point every desktop app at it to share **one library** across all your
+computers. Access is protected by a bearer token you choose.
+
+Quick start with Docker:
+
+```bash
+cp .env.example .env   # set a strong SNIPVAULT_TOKEN
+docker compose up -d
+```
+
+Then in each app: **Settings → Sync server → Test & connect** (or choose
+**Connect to a sync server** on first launch), entering the server URL and
+token. Full instructions — including a bare Node + systemd setup and security
+notes — are in [`docs/self-hosting.md`](docs/self-hosting.md).
+
 ## macOS: "SnipVault is damaged and can't be opened"
 
 SnipVault is **not signed with a paid Apple Developer certificate**, so when you download the `.dmg` from the Releases page, macOS Gatekeeper quarantines it and — on Apple Silicon especially — shows *"SnipVault is damaged and can't be opened. You should move it to the Trash."* The app is not actually damaged; this is Gatekeeper blocking an unsigned, un-notarized app. To open it:
