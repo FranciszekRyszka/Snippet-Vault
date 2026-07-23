@@ -15,8 +15,10 @@ RUN apt-get update \
 
 RUN corepack enable
 
-# Install with the committed lockfile for reproducible builds.
-COPY package.json pnpm-lock.yaml ./
+# Install with the committed lockfile for reproducible builds. pnpm-workspace.yaml
+# carries the onlyBuiltDependencies allowlist, without which a non-interactive
+# install errors (ERR_PNPM_IGNORED_BUILDS) on better-sqlite3's native addon.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Build the server bundle (API routes included — TAURI_BUILD is left unset).
