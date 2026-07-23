@@ -2,53 +2,74 @@ import Database from "better-sqlite3";
 import path from "path";
 
 const dbPath = path.join(process.cwd(), "data", "snippets.db");
-const db = new Database(dbPath);
 
-// Wait (rather than failing instantly) if another connection holds a write
-// lock. Without this, concurrent opens — e.g. Next.js evaluating several API
-// route modules in parallel during a build, or overlapping requests on the
-// sync server — can hit SQLITE_BUSY while the schema is being set up. Mirrors
-// the desktop (rusqlite) backend, which sets the same 5s timeout.
-db.pragma("busy_timeout = 5000");
+let connection: Database.Database | null = null;
 
-// Enable WAL mode for better concurrency
-db.pragma("journal_mode = WAL");
+// Open the database on first use rather than at import time. `next build`
+// imports every API route module to collect page data; if the connection (with
+// its WAL setup and schema migration) opened at import, several build workers
+// would race to create the same fresh file and hit SQLITE_BUSY. Deferring to
+// the first real query means the DB opens only when a request actually runs.
+function getDb(): Database.Database {
+  if (connection) return connection;
 
-// Initialize the database schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS snippets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT DEFAULT '',
-    code TEXT NOT NULL,
-    language TEXT NOT NULL,
-    tags TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+  const conn = new Database(dbPath);
+
+  // Wait (rather than failing instantly) if another connection holds a write
+  // lock — mirrors the desktop (rusqlite) backend's 5s timeout and keeps
+  // overlapping requests on the sync server from erroring.
+  conn.pragma("busy_timeout = 5000");
+
+  // Enable WAL mode for better concurrency
+  conn.pragma("journal_mode = WAL");
+
+  // Initialize the database schema
+  conn.exec(`
+    CREATE TABLE IF NOT EXISTS snippets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      code TEXT NOT NULL,
+      language TEXT NOT NULL,
+      tags TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
+    CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);
+  `);
+
+  // Migrations: add columns introduced after the initial schema to older
+  // databases. Each is guarded so it runs at most once.
+  const existingColumns = new Set(
+    (conn.prepare("PRAGMA table_info(snippets)").all() as { name: string }[]).map(
+      (c) => c.name
+    )
   );
-  CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
-  CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at);
-`);
+  const addColumn = (name: string, definition: string) => {
+    if (!existingColumns.has(name)) {
+      conn.exec(`ALTER TABLE snippets ADD COLUMN ${definition}`);
+      existingColumns.add(name);
+    }
+  };
+  addColumn("favorite", "favorite INTEGER NOT NULL DEFAULT 0");
+  addColumn("model", "model TEXT NOT NULL DEFAULT ''");
+  addColumn("copy_count", "copy_count INTEGER NOT NULL DEFAULT 0");
+  addColumn("last_used_at", "last_used_at TEXT");
 
-// Migrations: add columns introduced after the initial schema to older
-// databases. Each is guarded so it runs at most once.
-const existingColumns = new Set(
-  (db.prepare("PRAGMA table_info(snippets)").all() as { name: string }[]).map(
-    (c) => c.name
-  )
-);
-const addColumn = (name: string, definition: string) => {
-  if (!existingColumns.has(name)) {
-    db.exec(`ALTER TABLE snippets ADD COLUMN ${definition}`);
-    existingColumns.add(name);
-  }
-};
-addColumn("favorite", "favorite INTEGER NOT NULL DEFAULT 0");
-addColumn("model", "model TEXT NOT NULL DEFAULT ''");
-addColumn("copy_count", "copy_count INTEGER NOT NULL DEFAULT 0");
-addColumn("last_used_at", "last_used_at TEXT");
+  connection = conn;
+  return connection;
+}
 
-export { db };
+// Lazy handle: callers keep using `db.prepare(...)` / `db.exec(...)` unchanged,
+// but the underlying connection only opens on first property access.
+export const db: Database.Database = new Proxy({} as Database.Database, {
+  get(_target, prop) {
+    const real = getDb();
+    const value = Reflect.get(real as object, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
 
 export type Snippet = {
   id: number;
