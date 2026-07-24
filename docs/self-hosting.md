@@ -1,17 +1,22 @@
 # Self-hosting the SnipVault sync server
 
 Run SnipVault on a machine on your network (a homeserver, NAS, spare PC) and
-point every SnipVault desktop app at it. All machines then read and write **one
-shared library** — the server holds the single source of truth.
+point every SnipVault desktop app at it. Each app keeps its **own local library**
+and **syncs** with the server — so your snippets are always there even when the
+server isn't, and every machine converges on the same set.
 
-This is a *shared server*, not offline sync: the apps read and write live over
-HTTP, so the server needs to be reachable when you use them.
+Syncing is **incremental and two-way**: each machine pushes what it has and pulls
+what the server has, so new snippets flow in both directions. It runs on app
+startup and whenever you click **Sync now**. See
+[How syncing works](#how-syncing-works) for the details.
 
 ---
 
 ## What you get
 
-- One library, shared across all your computers.
+- One library kept in sync across all your computers.
+- Works offline — you edit your local copy and it reconciles on the next sync.
+- New snippets, edits, and deletions all propagate between machines.
 - Access protected by a **bearer token** you choose.
 - Your data stays on hardware you control.
 
@@ -101,9 +106,35 @@ In each SnipVault desktop app:
 1. Open **Settings** (or, on a fresh install, choose **Connect to a sync
    server** on the first-run screen).
 2. Enter the server URL (e.g. `http://192.168.1.50:3000`) and your token.
-3. **Test & connect.** The app switches to the shared library.
+3. **Test & save.** The app verifies the server, saves it, and runs a first sync
+   — pulling the server's snippets into this machine's local library.
 
-Repeat on every machine using the same URL and token.
+Repeat on every machine using the same URL and token. From then on each app
+syncs automatically on startup, and you can trigger a sync any time with
+**Sync now** in Settings.
+
+---
+
+## How syncing works
+
+Every snippet has a stable id (a `uuid`) and a last-modified timestamp, so the
+same snippet is recognised across machines. On each sync:
+
+- **Both directions merge.** Snippets that exist on only one side are copied to
+  the other; the result is the union of everything.
+- **Newest edit wins.** If the same snippet was changed on two machines, the one
+  with the most recent modification time is kept (the older edit is overwritten).
+- **Deletes propagate.** Deleting a snippet marks it as removed rather than
+  erasing it. That "tombstone" syncs, so the snippet disappears everywhere — and
+  can't be silently resurrected by a machine that still had a copy.
+
+A couple of things worth knowing:
+
+- **Keep clocks roughly in sync.** "Newest wins" compares each machine's clock.
+  On a normal LAN that's fine; a badly-wrong clock could let a stale edit win.
+- **Editing the same snippet on two offline machines** before they next sync
+  keeps only the most recent version — the other edit is lost. Sync often to
+  avoid surprises.
 
 ---
 

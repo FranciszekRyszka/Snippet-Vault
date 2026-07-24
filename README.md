@@ -107,8 +107,10 @@ Runs `pnpm build:tauri`, which produces a static export in `out/` (the API route
 ## Sync across computers
 
 Run SnipVault on a machine on your network (a homeserver, NAS, or spare PC) and
-point every desktop app at it to share **one library** across all your
-computers. Access is protected by a bearer token you choose.
+point every desktop app at it to keep **one library in sync** across all your
+computers. Each app keeps a local copy and syncs two-way — new snippets, edits,
+and deletions flow between machines, and you can keep working offline. Access is
+protected by a bearer token you choose.
 
 Quick start with Docker:
 
@@ -117,10 +119,11 @@ cp .env.example .env   # set a strong SNIPVAULT_TOKEN
 docker compose up -d
 ```
 
-Then in each app: **Settings → Sync server → Test & connect** (or choose
-**Connect to a sync server** on first launch), entering the server URL and
-token. Full instructions — including a bare Node + systemd setup and security
-notes — are in [`docs/self-hosting.md`](docs/self-hosting.md).
+Then in each app: **Settings → Sync server → Test & save** (or choose **Connect
+to a sync server** on first launch), entering the server URL and token. The app
+syncs on startup and on demand via **Sync now**. Full instructions — how syncing
+resolves edits and deletes, a bare Node + systemd setup, and security notes —
+are in [`docs/self-hosting.md`](docs/self-hosting.md).
 
 ## macOS: "SnipVault is damaged and can't be opened"
 

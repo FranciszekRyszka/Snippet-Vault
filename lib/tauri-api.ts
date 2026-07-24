@@ -1,6 +1,7 @@
 // Snippet type definition (shared between frontend and backend)
 export type Snippet = {
   id: number;
+  uuid: string;
   title: string;
   description: string;
   code: string;
@@ -51,67 +52,57 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 // ---- Runtime mode ---------------------------------------------------------
 //
-// There are three ways snippet operations reach their data:
-//   * web    — a browser: same-origin fetch to the Next.js API routes.
-//   * local  — the desktop app with no server configured: Tauri `invoke` into
-//              the bundled rusqlite database.
-//   * remote — the desktop app pointed at a self-hosted sync server: HTTP calls
-//              (via the Tauri HTTP plugin, so CSP/CORS don't apply) to that
-//              server's API, carrying a bearer token.
+// Snippet operations always run against the LOCAL database:
+//   * web     — a browser: same-origin fetch to the Next.js API routes.
+//   * desktop — Tauri `invoke` into the bundled rusqlite database.
 //
-// The remote config lives in the Rust-side config.json and is cached here after
-// the first read so the hot path stays synchronous-ish.
+// A configured sync server is NOT a live backend — it's a peer the desktop app
+// reconciles against on demand (see `syncNow`). Its config lives in the Rust
+// config.json and is cached here after the first read.
 
-export type RemoteConfig = { url: string; token: string };
+export type SyncServer = { url: string; token: string };
 
-let remoteConfig: RemoteConfig | null = null;
-let remoteLoaded = false;
+let syncServer: SyncServer | null = null;
+let syncServerLoaded = false;
 
-// Read (once) whether a sync server is configured. Only the desktop app can
-// have one; in the browser this is always null.
-async function loadRemoteConfig(): Promise<RemoteConfig | null> {
+// Read (once) the configured sync server, if any. Only the desktop app can have
+// one; in the browser this is always null.
+async function loadSyncServer(): Promise<SyncServer | null> {
   if (!isTauri()) return null;
-  if (remoteLoaded) return remoteConfig;
+  if (syncServerLoaded) return syncServer;
   try {
-    remoteConfig = await invoke<RemoteConfig | null>("get_remote_config");
+    syncServer = await invoke<SyncServer | null>("get_remote_config");
   } catch {
-    remoteConfig = null;
+    syncServer = null;
   }
-  remoteLoaded = true;
-  return remoteConfig;
+  syncServerLoaded = true;
+  return syncServer;
 }
 
-// The saved sync server, or null when in local/web mode. Public so the UI can
-// show connection status.
-export async function getRemoteConfig(): Promise<RemoteConfig | null> {
-  return loadRemoteConfig();
+// The saved sync server, or null when none is configured. Public so the UI can
+// show status and enable the "Sync now" action.
+export async function getSyncServer(): Promise<SyncServer | null> {
+  return loadSyncServer();
 }
 
-// True when snippet operations should use the local rusqlite backend — i.e.
-// running in Tauri with no sync server configured.
+// Snippet operations use the local backend in every mode: Tauri `invoke` on the
+// desktop, same-origin fetch in the browser. Async so call sites keep the
+// `await useLocalDb()` form they already use.
 async function useLocalDb(): Promise<boolean> {
-  if (!isTauri()) return false;
-  return (await loadRemoteConfig()) === null;
+  return isTauri();
 }
 
 // The Tauri HTTP plugin's fetch: same signature as the web fetch, but the
-// request is made from Rust, bypassing the webview CSP and server CORS.
+// request is made from Rust, bypassing the webview CSP and server CORS. Used
+// only to talk to the sync server (never for local snippet ops).
 async function tauriHttpFetch(): Promise<typeof fetch> {
   const mod = await import("@tauri-apps/plugin-http");
   return mod.fetch as typeof fetch;
 }
 
-// Fetch against the active HTTP backend. In remote mode the path is resolved
-// against the server URL and a bearer token is attached; in web mode it's a
-// plain same-origin request. Not used in local (invoke) mode.
+// Same-origin fetch to the local Next.js API. Web runtime only — the desktop
+// app never reaches here (it uses `invoke`).
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const remote = await loadRemoteConfig();
-  if (remote) {
-    const doFetch = await tauriHttpFetch();
-    const headers = new Headers(init?.headers);
-    headers.set("Authorization", `Bearer ${remote.token}`);
-    return doFetch(`${remote.url}${path}`, { ...init, headers });
-  }
   return fetch(path, init);
 }
 
@@ -130,12 +121,13 @@ async function throwIfNotOk(res: Response, fallback: string): Promise<void> {
   throw new Error(message);
 }
 
-// ---- Sync server connection (desktop only) --------------------------------
+// ---- Sync server (desktop only) -------------------------------------------
 
-// Verify a sync server is reachable and the token is accepted, then save it and
-// switch the app into remote mode. Throws a friendly message on failure so the
-// caller can show it without saving a broken config.
-export async function connectRemote(url: string, token: string): Promise<void> {
+// Verify a sync server is reachable and the token is accepted, then save it.
+// This does NOT change how snippets are read/written (still local) — it just
+// enables syncing. Throws a friendly message on failure so the caller can show
+// it without saving a broken config.
+export async function saveSyncServer(url: string, token: string): Promise<void> {
   const normalized = url.trim().replace(/\/+$/, "");
   if (!normalized) throw new Error("Enter a server URL.");
 
@@ -152,15 +144,62 @@ export async function connectRemote(url: string, token: string): Promise<void> {
   if (!res.ok) throw new Error(`Server error (HTTP ${res.status}).`);
 
   await invoke("set_remote_config", { url: normalized, token });
-  remoteConfig = { url: normalized, token };
-  remoteLoaded = true;
+  syncServer = { url: normalized, token };
+  syncServerLoaded = true;
 }
 
-// Forget the sync server and return to the local database.
-export async function disconnectRemote(): Promise<void> {
+// Forget the sync server. The local library is untouched.
+export async function removeSyncServer(): Promise<void> {
   await invoke("clear_remote_config");
-  remoteConfig = null;
-  remoteLoaded = true;
+  syncServer = null;
+  syncServerLoaded = true;
+}
+
+// A snippet as exchanged with the sync server: keyed by its stable `uuid`,
+// carrying the `deleted` tombstone flag, without the local autoincrement id.
+export type SyncRecord = Omit<Snippet, "id"> & { deleted: boolean };
+
+export type SyncResult = {
+  // How many local rows the incoming server data inserted or updated.
+  applied: number;
+  // Total live (non-deleted) snippets after the sync.
+  total: number;
+};
+
+// Reconcile the local library with the configured sync server in one round
+// trip: push every local record (tombstones included), receive the server's
+// merged set, and apply it locally. Both sides converge to the union of
+// records with the most recent edit winning per snippet.
+export async function syncNow(): Promise<SyncResult> {
+  if (!isTauri()) throw new Error("Sync is only available in the desktop app.");
+  const server = await loadSyncServer();
+  if (!server) throw new Error("No sync server configured.");
+
+  const local = await invoke<SyncRecord[]>("get_all_for_sync");
+
+  let res: Response;
+  try {
+    const doFetch = await tauriHttpFetch();
+    res = await doFetch(`${server.url}/api/sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${server.token}`,
+      },
+      body: JSON.stringify({ records: local }),
+    });
+  } catch {
+    throw new Error("Couldn't reach the sync server.");
+  }
+  if (res.status === 401) throw new Error("Server rejected the token.");
+  if (!res.ok) throw new Error(`Sync failed (HTTP ${res.status}).`);
+
+  const body = (await res.json()) as { records: SyncRecord[] };
+  const applied = await invoke<number>("apply_sync_records", {
+    records: body.records,
+  });
+  const total = body.records.filter((r) => !r.deleted).length;
+  return { applied, total };
 }
 
 // API functions that work in browser, local desktop, and remote-server modes

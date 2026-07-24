@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
 import path from "path";
 
 const dbPath = path.join(process.cwd(), "data", "snippets.db");
@@ -57,6 +58,25 @@ function getDb(): Database.Database {
   addColumn("copy_count", "copy_count INTEGER NOT NULL DEFAULT 0");
   addColumn("last_used_at", "last_used_at TEXT");
 
+  // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
+  // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
+  // rows, then made unique — SQLite can't ALTER-ADD a UNIQUE column directly.
+  addColumn("uuid", "uuid TEXT");
+  addColumn("deleted", "deleted INTEGER NOT NULL DEFAULT 0");
+  const needUuid = conn
+    .prepare("SELECT id FROM snippets WHERE uuid IS NULL OR uuid = ''")
+    .all() as { id: number }[];
+  if (needUuid.length) {
+    const set = conn.prepare("UPDATE snippets SET uuid = ? WHERE id = ?");
+    const backfill = conn.transaction((rows: { id: number }[]) => {
+      for (const r of rows) set.run(randomUUID(), r.id);
+    });
+    backfill(needUuid);
+  }
+  conn.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_uuid ON snippets(uuid)"
+  );
+
   connection = conn;
   return connection;
 }
@@ -73,6 +93,7 @@ export const db: Database.Database = new Proxy({} as Database.Database, {
 
 export type Snippet = {
   id: number;
+  uuid: string;
   title: string;
   description: string;
   code: string;
@@ -104,6 +125,7 @@ function parseTags(raw: unknown): string[] {
 export function rowToSnippet(row: Record<string, unknown>): Snippet {
   return {
     ...row,
+    uuid: (row.uuid as string) ?? "",
     tags: parseTags(row.tags),
     favorite: Boolean(row.favorite),
     model: (row.model as string) ?? "",

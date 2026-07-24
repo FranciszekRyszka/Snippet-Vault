@@ -98,8 +98,9 @@ export async function PATCH(
       );
     }
 
+    // Bump updated_at so a pin/unpin wins during sync (newest edit wins).
     const stmt = db.prepare(
-      "UPDATE snippets SET favorite = ? WHERE id = ?"
+      "UPDATE snippets SET favorite = ?, updated_at = datetime('now') WHERE id = ?"
     );
     const result = stmt.run(favorite ? 1 : 0, numericId);
 
@@ -131,7 +132,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
   try {
-    const stmt = db.prepare("DELETE FROM snippets WHERE id = ?");
+    // Soft-delete: flag the row as a tombstone and bump updated_at so the
+    // deletion propagates to other machines on the next sync. The row itself
+    // stays in the database (hidden from every read).
+    const stmt = db.prepare(
+      "UPDATE snippets SET deleted = 1, updated_at = datetime('now') WHERE id = ? AND deleted = 0"
+    );
     const result = stmt.run(numericId);
 
     if (result.changes === 0) {

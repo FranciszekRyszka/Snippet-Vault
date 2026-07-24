@@ -1,7 +1,7 @@
 mod db;
 mod validation;
 
-use db::{Database, CreateSnippetInput, UpdateSnippetInput, Snippet};
+use db::{Database, CreateSnippetInput, UpdateSnippetInput, Snippet, SyncRecord};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -238,6 +238,25 @@ fn restore_snippet(state: State<Mutex<AppState>>, snippet: Snippet) -> Result<Sn
     db.restore_snippet(snippet).map_err(|e| e.to_string())
 }
 
+// ---- Sync commands --------------------------------------------------------
+
+/// Read the entire local library (including tombstones) to push to the server.
+#[tauri::command]
+fn get_all_for_sync(state: State<Mutex<AppState>>) -> Result<Vec<SyncRecord>, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.get_all_for_sync().map_err(|e| e.to_string())
+}
+
+/// Merge the server's records back into the local library (newest edit wins).
+/// Returns how many local rows were inserted or updated.
+#[tauri::command]
+fn apply_sync_records(state: State<Mutex<AppState>>, records: Vec<SyncRecord>) -> Result<i64, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.apply_sync_records(records).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Decide which database (if any) to open on startup.
@@ -292,6 +311,8 @@ pub fn run() {
             get_remote_config,
             set_remote_config,
             clear_remote_config,
+            get_all_for_sync,
+            apply_sync_records,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

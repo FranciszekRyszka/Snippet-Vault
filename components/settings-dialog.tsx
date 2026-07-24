@@ -17,10 +17,11 @@ import {
   getDatabasePath,
   useExistingDb,
   backupDatabase,
-  getRemoteConfig,
-  connectRemote,
-  disconnectRemote,
-  type RemoteConfig,
+  getSyncServer,
+  saveSyncServer,
+  removeSyncServer,
+  syncNow,
+  type SyncServer,
 } from "@/lib/tauri-api";
 import {
   checkForUpdate,
@@ -46,10 +47,12 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   const [notice, setNotice] = useState<string | null>(null);
 
   // --- Sync server ---
-  const [remote, setRemote] = useState<RemoteConfig | null>(null);
+  const [server, setServer] = useState<SyncServer | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [tokenInput, setTokenInput] = useState("");
-  const [syncBusy, setSyncBusy] = useState<"connect" | "disconnect" | null>(null);
+  const [syncBusy, setSyncBusy] = useState<"save" | "remove" | "sync" | null>(
+    null
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
@@ -67,25 +70,33 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
     getAppVersion().then(setVersion).catch(() => setVersion(""));
     setAutoCheck(isAutoUpdateEnabled());
-    getRemoteConfig()
-      .then((r) => {
-        setRemote(r);
-        if (r) setUrlInput(r.url);
+    getSyncServer()
+      .then((s) => {
+        setServer(s);
+        if (s) setUrlInput(s.url);
       })
-      .catch(() => setRemote(null));
+      .catch(() => setServer(null));
   }, []);
 
-  const handleConnect = async () => {
+  // Push local changes, pull the server's, then reload the dashboard's lists.
+  const runSync = async () => {
+    const result = await syncNow();
+    onDbChanged();
+    return result;
+  };
+
+  const handleSave = async () => {
     setSyncError(null);
     setSyncNotice(null);
-    setSyncBusy("connect");
+    setSyncBusy("save");
     try {
-      await connectRemote(urlInput, tokenInput);
-      const r = await getRemoteConfig();
-      setRemote(r);
+      await saveSyncServer(urlInput, tokenInput);
+      setServer(await getSyncServer());
       setTokenInput("");
-      setSyncNotice("Connected — now syncing with the server.");
-      onDbChanged();
+      const { total } = await runSync();
+      setSyncNotice(
+        `Sync server saved — ${total} prompt${total === 1 ? "" : "s"} in your library.`
+      );
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -93,16 +104,33 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleSync = async () => {
     setSyncError(null);
     setSyncNotice(null);
-    setSyncBusy("disconnect");
+    setSyncBusy("sync");
     try {
-      await disconnectRemote();
-      setRemote(null);
+      const { total, applied } = await runSync();
+      setSyncNotice(
+        `Synced — ${applied} update${applied === 1 ? "" : "s"} pulled, ${total} prompt${
+          total === 1 ? "" : "s"
+        } total.`
+      );
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncBusy(null);
+    }
+  };
+
+  const handleRemove = async () => {
+    setSyncError(null);
+    setSyncNotice(null);
+    setSyncBusy("remove");
+    try {
+      await removeSyncServer();
+      setServer(null);
       setTokenInput("");
-      setSyncNotice("Disconnected — using the local database.");
-      onDbChanged();
+      setSyncNotice("Sync server removed. Your local library is unchanged.");
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -234,32 +262,48 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               Sync server
             </label>
 
-            {remote ? (
+            {server ? (
               <div className="flex flex-col gap-3">
                 <p className="flex items-start gap-1.5 break-all rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
                   <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   Syncing with{" "}
-                  <span className="font-mono">{remote.url}</span>
+                  <span className="font-mono">{server.url}</span>
                 </p>
-                <button
-                  type="button"
-                  onClick={handleDisconnect}
-                  disabled={syncBusy !== null}
-                  className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-                >
-                  {syncBusy === "disconnect" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Unplug className="h-4 w-4" />
-                  )}
-                  Disconnect (use local database)
-                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleSync}
+                    disabled={syncBusy !== null}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {syncBusy === "sync" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Sync now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemove}
+                    disabled={syncBusy !== null}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    {syncBusy === "remove" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Unplug className="h-4 w-4" />
+                    )}
+                    Remove server
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <p className="text-xs text-muted-foreground">
-                  Connect to a self-hosted server to share one library across
-                  your computers.
+                  Add a self-hosted server to keep one library in sync across
+                  your computers. Your snippets stay stored locally and reconcile
+                  with the server on startup and when you tap Sync now.
                 </p>
                 <input
                   type="url"
@@ -282,16 +326,16 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
                 />
                 <button
                   type="button"
-                  onClick={handleConnect}
+                  onClick={handleSave}
                   disabled={syncBusy !== null || !urlInput.trim() || !tokenInput}
                   className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {syncBusy === "connect" ? (
+                  {syncBusy === "save" ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Plug className="h-4 w-4" />
                   )}
-                  Test &amp; connect
+                  Test &amp; save
                 </button>
               </div>
             )}
@@ -309,7 +353,6 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
             )}
           </div>
 
-          {!remote && (
           <div className="border-t border-border pt-5">
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Database location
@@ -318,9 +361,7 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               {dbPath ?? "Loading…"}
             </p>
           </div>
-          )}
 
-          {!remote && (
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
@@ -349,15 +390,14 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               Back up database…
             </button>
           </div>
-          )}
 
-          {!remote && notice && (
+          {notice && (
             <p className="flex items-start gap-1.5 break-all rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
               <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {notice}
             </p>
           )}
-          {!remote && error && (
+          {error && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
             </p>

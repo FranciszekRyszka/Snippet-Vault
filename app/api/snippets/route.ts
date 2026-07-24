@@ -1,4 +1,5 @@
 import { db, rowToSnippet, type Snippet } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
 import { escapeLike, sanitizeTags, sanitizeModel } from "@/lib/api-utils";
@@ -13,7 +14,9 @@ export async function GET(request: Request) {
   const searchMode = searchParams.get("searchMode") || "all";
 
   try {
-    let query = "SELECT * FROM snippets WHERE 1=1";
+    // Hide soft-deleted (tombstoned) rows — they exist only so the deletion can
+    // propagate to other machines during sync.
+    let query = "SELECT * FROM snippets WHERE deleted = 0";
     const params: (string | number)[] = [];
 
     // Language filter
@@ -91,11 +94,12 @@ export async function POST(request: Request) {
     const sanitizedModel = sanitizeModel(model);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (title, description, code, language, tags, model)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, model)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
+      randomUUID(),
       title,
       description || "",
       code,

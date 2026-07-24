@@ -25,7 +25,8 @@ import {
   recordCopy,
   restoreSnippet,
   getInitStatus,
-  getRemoteConfig,
+  getSyncServer,
+  syncNow,
   isTauri,
   type Snippet,
   type CreateSnippetInput,
@@ -83,6 +84,9 @@ export function SnippetsDashboard() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Guards the once-per-launch startup sync so it doesn't re-run on every
+  // dbReady change.
+  const didStartupSync = useRef(false);
 
   const showError = useCallback((message: string) => {
     setActionError(message);
@@ -166,19 +170,11 @@ export function SnippetsDashboard() {
     }
   }, [dropPendingDeletes]);
 
-  // Decide whether the app is ready to load snippets. A configured sync server
-  // takes precedence over local first-run setup — in remote mode there's no
-  // local database to create, so we skip straight to ready. Otherwise fall back
-  // to the desktop first-run check.
+  // Decide whether the app is ready to load snippets. The app is always
+  // local-first, so this is just the desktop first-run check (the browser
+  // always reports ready). A configured sync server reconciles separately,
+  // once the local database is ready (see the startup-sync effect below).
   const refreshReady = useCallback(async () => {
-    try {
-      if (await getRemoteConfig()) {
-        setDbReady(true);
-        return;
-      }
-    } catch {
-      // Couldn't read remote config; treat as local mode.
-    }
     try {
       const status = await getInitStatus();
       setDbReady(status.initialized);
@@ -212,6 +208,25 @@ export function SnippetsDashboard() {
   useEffect(() => {
     if (dbReady) fetchAllSnippets();
   }, [dbReady, fetchAllSnippets]);
+
+  // On startup (desktop only), if a sync server is configured, reconcile with
+  // it once the local database is ready, then reload the lists. Runs quietly:
+  // if the server is unreachable the app keeps working against the local
+  // library. Guarded so it happens once per launch.
+  useEffect(() => {
+    if (!dbReady || didStartupSync.current) return;
+    didStartupSync.current = true;
+    (async () => {
+      try {
+        if (!(await getSyncServer())) return;
+        await syncNow();
+        fetchSnippets();
+        fetchAllSnippets();
+      } catch {
+        // Offline or server error — stay on the local library.
+      }
+    })();
+  }, [dbReady, fetchSnippets, fetchAllSnippets]);
 
   // Clear any pending timers on unmount.
   useEffect(() => () => {

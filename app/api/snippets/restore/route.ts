@@ -1,4 +1,5 @@
 import { db, rowToSnippet } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
 import {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
+      uuid,
       title,
       description,
       code,
@@ -31,6 +33,23 @@ export async function POST(request: Request) {
       created_at,
       updated_at,
     } = body;
+
+    // Fast path for undo-after-delete: the row is only soft-deleted, so clear
+    // its tombstone in place. This keeps the same uuid, so the undelete syncs
+    // as an ordinary update rather than creating a duplicate on other machines.
+    if (typeof uuid === "string" && uuid) {
+      const undelete = db
+        .prepare(
+          "UPDATE snippets SET deleted = 0, updated_at = datetime('now') WHERE uuid = ?"
+        )
+        .run(uuid);
+      if (undelete.changes > 0) {
+        const row = db
+          .prepare("SELECT * FROM snippets WHERE uuid = ?")
+          .get(uuid) as Record<string, unknown>;
+        return NextResponse.json(rowToSnippet(row), { status: 201 });
+      }
+    }
 
     if (
       typeof title !== "string" ||
@@ -69,11 +88,12 @@ export async function POST(request: Request) {
     const lastUsedAt = validTimestampOr(last_used_at, null);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
+      typeof uuid === "string" && uuid ? uuid : randomUUID(),
       title,
       typeof description === "string" ? description : "",
       code,

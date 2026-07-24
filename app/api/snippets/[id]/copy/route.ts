@@ -14,7 +14,7 @@ export async function POST(
   }
   try {
     const stmt = db.prepare(
-      "UPDATE snippets SET copy_count = copy_count + 1, last_used_at = datetime('now') WHERE id = ?"
+      "UPDATE snippets SET copy_count = copy_count + 1, last_used_at = datetime('now') WHERE id = ? AND deleted = 0"
     );
     const result = stmt.run(numericId);
 

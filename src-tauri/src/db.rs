@@ -1,12 +1,13 @@
-use rusqlite::{Connection, DatabaseName, Result, params};
+use rusqlite::{Connection, DatabaseName, OptionalExtension, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The full column list, in the order `row_to_snippet` expects. Kept in one
-/// place so every SELECT stays in sync with the row mapper.
+/// place so every SELECT stays in sync with the row mapper. `uuid` is appended
+/// last so the earlier indices stay stable.
 const SNIPPET_COLUMNS: &str =
-    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at";
+    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid";
 
 /// Escape LIKE metacharacters so user input matches literally. Must be paired
 /// with an `ESCAPE '\'` clause on the LIKE. Without this, a search or tag value
@@ -18,6 +19,8 @@ fn escape_like(s: &str) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snippet {
     pub id: i64,
+    #[serde(default)]
+    pub uuid: String,
     pub title: String,
     pub description: String,
     pub code: String,
@@ -51,6 +54,26 @@ pub struct UpdateSnippetInput {
     pub model: Option<String>,
 }
 
+/// One snippet as it travels to/from the sync server: the full record keyed by
+/// the stable `uuid`, including the `deleted` tombstone flag (so deletions
+/// propagate) but no local autoincrement `id`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncRecord {
+    pub uuid: String,
+    pub title: String,
+    pub description: String,
+    pub code: String,
+    pub language: String,
+    pub tags: Vec<String>,
+    pub favorite: bool,
+    pub model: String,
+    pub copy_count: i64,
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted: bool,
+}
+
 /// Map a row selected with `SNIPPET_COLUMNS` into a `Snippet`.
 fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
     let tags_json: String = row.get(5)?;
@@ -60,6 +83,9 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
     Ok(Snippet {
         id: row.get(0)?,
         title: row.get(1)?,
+        // `uuid` is the last column (index 12). Tolerate NULL on a not-yet-
+        // migrated row by falling back to an empty string.
+        uuid: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
         description: row.get(2)?,
         code: row.get(3)?,
         language: row.get(4)?,
@@ -156,6 +182,34 @@ impl Database {
             conn.execute("ALTER TABLE snippets ADD COLUMN last_used_at TEXT", [])?;
         }
 
+        // Sync support: a stable cross-machine identity and a soft-delete
+        // tombstone. `uuid` is added nullable, backfilled for existing rows,
+        // then made unique — SQLite can't ALTER-ADD a UNIQUE column directly.
+        if !existing.contains("uuid") {
+            conn.execute("ALTER TABLE snippets ADD COLUMN uuid TEXT", [])?;
+        }
+        if !existing.contains("deleted") {
+            conn.execute(
+                "ALTER TABLE snippets ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+        let unfilled: Vec<i64> = {
+            let mut stmt =
+                conn.prepare("SELECT id FROM snippets WHERE uuid IS NULL OR uuid = ''")?;
+            let ids = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+            ids.filter_map(|r| r.ok()).collect()
+        };
+        for id in unfilled {
+            conn.execute(
+                "UPDATE snippets SET uuid = ? WHERE id = ?",
+                params![uuid::Uuid::new_v4().to_string(), id],
+            )?;
+        }
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_uuid ON snippets(uuid);",
+        )?;
+
         Ok(Self {
             conn: Mutex::new(conn),
             path: path.to_path_buf(),
@@ -178,7 +232,9 @@ impl Database {
     pub fn get_all_snippets(&self, search: Option<&str>, language: Option<&str>, tag: Option<&str>, search_mode: Option<&str>) -> Result<Vec<Snippet>> {
         let conn = self.conn.lock().unwrap();
 
-        let mut sql = format!("SELECT {SNIPPET_COLUMNS} FROM snippets WHERE 1=1");
+        // `deleted = 0` hides soft-deleted (tombstoned) rows, which exist only
+        // so the deletion can propagate to other machines during sync.
+        let mut sql = format!("SELECT {SNIPPET_COLUMNS} FROM snippets WHERE deleted = 0");
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(lang) = language {
@@ -262,10 +318,11 @@ impl Database {
         let description = input.description.unwrap_or_default();
         let model = input.model.unwrap_or_default();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let uuid = uuid::Uuid::new_v4().to_string();
 
         conn.execute(
-            "INSERT INTO snippets (title, description, code, language, tags, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            params![input.title, description, input.code, input.language, tags_json, model, now, now],
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![uuid, input.title, description, input.code, input.language, tags_json, model, now, now],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -296,18 +353,27 @@ impl Database {
         }
     }
 
+    /// Soft-delete: flag the row as a tombstone and bump `updated_at` so the
+    /// deletion propagates during sync. The row stays in the database (hidden
+    /// from every read).
     pub fn delete_snippet(&self, id: i64) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
-        let rows_affected = conn.execute("DELETE FROM snippets WHERE id = ?", params![id])?;
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let rows_affected = conn.execute(
+            "UPDATE snippets SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0",
+            params![now, id],
+        )?;
         Ok(rows_affected > 0)
     }
 
     /// Pin/unpin a snippet. Returns the updated snippet, or `None` if not found.
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<Option<Snippet>> {
         let conn = self.conn.lock().unwrap();
+        // Bump updated_at so a pin/unpin wins during sync (newest edit wins).
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let rows_affected = conn.execute(
-            "UPDATE snippets SET favorite = ? WHERE id = ?",
-            params![favorite as i64, id],
+            "UPDATE snippets SET favorite = ?, updated_at = ? WHERE id = ?",
+            params![favorite as i64, now, id],
         )?;
         drop(conn);
 
@@ -335,18 +401,53 @@ impl Database {
         }
     }
 
-    /// Re-insert a previously deleted snippet, preserving all its fields
-    /// (favorite, model, usage counts, timestamps). Used by undo-after-delete.
-    /// The restored row gets a new autoincrement id.
+    fn get_snippet_by_uuid(&self, uuid: &str) -> Result<Option<Snippet>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            &format!("SELECT {SNIPPET_COLUMNS} FROM snippets WHERE uuid = ?")
+        )?;
+        let mut rows = stmt.query(params![uuid])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row_to_snippet(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Restore a previously deleted snippet (undo-after-delete). With soft
+    /// deletes the row still exists, so clear its tombstone in place — this
+    /// keeps the same uuid, so the undelete syncs as an ordinary update rather
+    /// than creating a duplicate elsewhere. Falls back to re-inserting (with the
+    /// original uuid, or a fresh one) only if the row is genuinely gone.
     pub fn restore_snippet(&self, s: Snippet) -> Result<Snippet> {
+        if !s.uuid.is_empty() {
+            let conn = self.conn.lock().unwrap();
+            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let affected = conn.execute(
+                "UPDATE snippets SET deleted = 0, updated_at = ? WHERE uuid = ?",
+                params![now, s.uuid],
+            )?;
+            drop(conn);
+            if affected > 0 {
+                return self
+                    .get_snippet_by_uuid(&s.uuid)?
+                    .ok_or(rusqlite::Error::QueryReturnedNoRows);
+            }
+        }
+
         let conn = self.conn.lock().unwrap();
         let tags_json = serde_json::to_string(&s.tags).unwrap_or_else(|_| "[]".to_string());
+        let uuid = if s.uuid.is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            s.uuid.clone()
+        };
 
         conn.execute(
-            "INSERT INTO snippets (title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
-                s.title, s.description, s.code, s.language, tags_json,
+                uuid, s.title, s.description, s.code, s.language, tags_json,
                 s.favorite as i64, s.model, s.copy_count, s.last_used_at, s.created_at, s.updated_at
             ],
         )?;
@@ -356,6 +457,95 @@ impl Database {
 
         self.get_snippet(id)?
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+    }
+
+    /// Every row for a sync push — including tombstones — as wire records.
+    pub fn get_all_for_sync(&self) -> Result<Vec<SyncRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT uuid, title, description, code, language, tags, favorite, model, \
+             copy_count, last_used_at, created_at, updated_at, deleted FROM snippets",
+        )?;
+        let iter = stmt.query_map([], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let favorite: i64 = row.get(6)?;
+            let deleted: i64 = row.get(12)?;
+            Ok(SyncRecord {
+                uuid: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                code: row.get(3)?,
+                language: row.get(4)?,
+                tags,
+                favorite: favorite != 0,
+                model: row.get(7)?,
+                copy_count: row
+                    .get::<_, i64>(8)
+                    .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
+                last_used_at: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+                deleted: deleted != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in iter {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// Merge incoming sync records into the local database, newest `updated_at`
+    /// winning per uuid (fixed-width UTC timestamps compare correctly as text).
+    /// Rows with an unknown uuid are inserted; records without a uuid are
+    /// skipped. Returns how many rows were inserted or updated.
+    pub fn apply_sync_records(&self, records: Vec<SyncRecord>) -> Result<i64> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut applied = 0i64;
+        for rec in records {
+            if rec.uuid.is_empty() {
+                continue;
+            }
+            let tags_json =
+                serde_json::to_string(&rec.tags).unwrap_or_else(|_| "[]".to_string());
+            let existing: Option<String> = tx
+                .query_row(
+                    "SELECT updated_at FROM snippets WHERE uuid = ?",
+                    params![rec.uuid],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match existing {
+                None => {
+                    tx.execute(
+                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        params![
+                            rec.uuid, rec.title, rec.description, rec.code, rec.language, tags_json,
+                            rec.favorite as i64, rec.model, rec.copy_count, rec.last_used_at,
+                            rec.created_at, rec.updated_at, rec.deleted as i64
+                        ],
+                    )?;
+                    applied += 1;
+                }
+                Some(current) if rec.updated_at > current => {
+                    tx.execute(
+                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
+                        params![
+                            rec.title, rec.description, rec.code, rec.language, tags_json,
+                            rec.favorite as i64, rec.model, rec.copy_count, rec.last_used_at,
+                            rec.created_at, rec.updated_at, rec.deleted as i64, rec.uuid
+                        ],
+                    )?;
+                    applied += 1;
+                }
+                _ => {}
+            }
+        }
+        tx.commit()?;
+        Ok(applied)
     }
 }
 

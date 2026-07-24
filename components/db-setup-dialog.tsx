@@ -9,7 +9,7 @@ import {
   Server,
   Plug,
 } from "lucide-react";
-import { initializeNewDb, useExistingDb, connectRemote } from "@/lib/tauri-api";
+import { initializeNewDb, useExistingDb, saveSyncServer, syncNow } from "@/lib/tauri-api";
 
 type DbSetupDialogProps = {
   // Called once a database has been created or selected.
@@ -25,7 +25,8 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Sync-server option: revealed inline when the user picks "Connect to a
-  // sync server" so a fresh install can go straight to remote mode.
+  // sync server" so a fresh install can create a local library and pull the
+  // server's snippets into it in one step.
   const [showConnect, setShowConnect] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [tokenInput, setTokenInput] = useState("");
@@ -92,12 +93,16 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
     }
   };
 
-  // Verify and save a sync-server connection, then enter remote mode.
+  // A synced machine still keeps a local library. Create one in the default
+  // location, save + verify the server, then pull the server's snippets into
+  // the fresh local database.
   const handleConnect = async () => {
     setError(null);
     setBusy("remote");
     try {
-      await connectRemote(urlInput, tokenInput);
+      await initializeNewDb();
+      await saveSyncServer(urlInput, tokenInput);
+      await syncNow();
       onComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -170,8 +175,9 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
                 Connect to a sync server
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Share one library across your computers via a self-hosted
-                server.
+                Keep one library in sync across your computers via a
+                self-hosted server. Creates a local copy and pulls in your
+                snippets.
               </p>
             </div>
           </button>

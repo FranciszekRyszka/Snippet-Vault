@@ -1,0 +1,158 @@
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+import { sanitizeTags, sanitizeModel, validTimestampOr } from "@/lib/api-utils";
+
+// One record as it travels over the wire between a client and the sync server.
+// It's the full snippet shape keyed by `uuid` (the stable cross-machine
+// identity), plus the `deleted` tombstone flag — everything needed to
+// reconcile, including hidden (deleted) rows.
+type SyncRecord = {
+  uuid: string;
+  title: string;
+  description: string;
+  code: string;
+  language: string;
+  tags: string[];
+  favorite: boolean;
+  model: string;
+  copy_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted: boolean;
+};
+
+// Map a database row into a wire record (tags → array, flags → booleans).
+function rowToRecord(row: Record<string, unknown>): SyncRecord {
+  let tags: string[] = [];
+  try {
+    const parsed = JSON.parse((row.tags as string) ?? "[]");
+    if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === "string");
+  } catch {
+    tags = [];
+  }
+  return {
+    uuid: (row.uuid as string) ?? "",
+    title: (row.title as string) ?? "",
+    description: (row.description as string) ?? "",
+    code: (row.code as string) ?? "",
+    language: (row.language as string) ?? "",
+    tags,
+    favorite: Boolean(row.favorite),
+    model: (row.model as string) ?? "",
+    copy_count: Number(row.copy_count ?? 0),
+    last_used_at: (row.last_used_at as string) ?? null,
+    created_at: (row.created_at as string) ?? "",
+    updated_at: (row.updated_at as string) ?? "",
+    deleted: Boolean(row.deleted),
+  };
+}
+
+// Coerce an untrusted incoming record into safe, storable values. Returns null
+// if it can't be used (no uuid, or no title/code — the only hard requirements).
+// Unlike the create route we don't reject unknown languages: a peer on a newer
+// app version may legitimately have languages this server doesn't know yet, and
+// dropping the user's prompt would be worse than storing it.
+function normalizeIncoming(raw: unknown): {
+  uuid: string;
+  title: string;
+  description: string;
+  code: string;
+  language: string;
+  tagsJson: string;
+  favorite: number;
+  model: string;
+  copyCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deleted: number;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const uuid = typeof r.uuid === "string" ? r.uuid.trim() : "";
+  const title = typeof r.title === "string" ? r.title : "";
+  const code = typeof r.code === "string" ? r.code : "";
+  if (!uuid || !title || !code) return null;
+
+  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const copyCountRaw = r.copy_count;
+  const copyCount =
+    typeof copyCountRaw === "number" && Number.isFinite(copyCountRaw)
+      ? Math.max(0, Math.floor(copyCountRaw))
+      : 0;
+
+  return {
+    uuid,
+    title: title.slice(0, 255),
+    description: typeof r.description === "string" ? r.description : "",
+    code,
+    language: typeof r.language === "string" ? r.language : "text",
+    tagsJson: JSON.stringify(sanitizeTags(r.tags)),
+    favorite: r.favorite === true ? 1 : 0,
+    model: sanitizeModel(r.model),
+    copyCount,
+    lastUsedAt: validTimestampOr(r.last_used_at, null),
+    createdAt: validTimestampOr(r.created_at, now) ?? now,
+    updatedAt: validTimestampOr(r.updated_at, now) ?? now,
+    deleted: r.deleted === true ? 1 : 0,
+  };
+}
+
+// Bidirectional sync in one round trip:
+//   1. The client POSTs its full record set (including its own tombstones).
+//   2. We merge each into our database by uuid, newest `updated_at` winning.
+//   3. We return our full, now-merged set so the client can apply the same
+//      newest-wins rule locally.
+// Both sides converge to the union of records with the most recent edits.
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const incoming: unknown[] = Array.isArray(body?.records) ? body.records : [];
+
+    const findStmt = db.prepare("SELECT updated_at FROM snippets WHERE uuid = ?");
+    const insertStmt = db.prepare(`
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, deleted)
+      VALUES (@uuid, @title, @description, @code, @language, @tagsJson, @favorite, @model, @copyCount, @lastUsedAt, @createdAt, @updatedAt, @deleted)
+    `);
+    const updateStmt = db.prepare(`
+      UPDATE snippets
+      SET title = @title, description = @description, code = @code, language = @language,
+          tags = @tagsJson, favorite = @favorite, model = @model, copy_count = @copyCount,
+          last_used_at = @lastUsedAt, created_at = @createdAt, updated_at = @updatedAt, deleted = @deleted
+      WHERE uuid = @uuid
+    `);
+
+    let applied = 0;
+    const merge = db.transaction((records: unknown[]) => {
+      for (const raw of records) {
+        const rec = normalizeIncoming(raw);
+        if (!rec) continue;
+        const existing = findStmt.get(rec.uuid) as
+          | { updated_at: string }
+          | undefined;
+        if (!existing) {
+          insertStmt.run(rec);
+          applied++;
+        } else if (rec.updatedAt > existing.updated_at) {
+          // Fixed-width UTC timestamps ("YYYY-MM-DD HH:MM:SS") compare correctly
+          // as strings, so this is a true "most recent edit wins".
+          updateStmt.run(rec);
+          applied++;
+        }
+      }
+    });
+    merge(incoming);
+
+    const rows = db
+      .prepare("SELECT * FROM snippets")
+      .all() as Record<string, unknown>[];
+    const records = rows.map(rowToRecord);
+
+    return NextResponse.json({ records, applied });
+  } catch (error) {
+    console.error("Sync failed:", error);
+    return NextResponse.json({ error: "Sync failed" }, { status: 500 });
+  }
+}
