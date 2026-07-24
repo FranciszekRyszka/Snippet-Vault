@@ -10,6 +10,10 @@
 #
 # The library is stored in the named volume `snipvault-data`, so it survives
 # container rebuilds and image updates.
+#
+# Logs go to stdout via the json-file driver (rotated), so any Docker log viewer
+# — `docker logs -f snipvault`, Dozzle, etc. — can read them. Docker also runs a
+# health check against /api/health, so `docker ps` shows the container's health.
 
 services:
   snipvault:
@@ -27,6 +31,34 @@ services:
       SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:?missing SNIPVAULT_TOKEN — set it in .env (see .env.example)}
     volumes:
       - snipvault-data:/app/data
+    # Poll the DB-backed health endpoint. It's behind the token gate, so the
+    # check sends the same token from the environment. Uses Node (always in the
+    # image) instead of curl/wget, which the slim runtime image doesn't include.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health',{headers:{Authorization:'Bearer '+(process.env.SNIPVAULT_TOKEN||'')}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Keep logs bounded and in a format log viewers (Dozzle, etc.) can read.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: a lightweight web log viewer for this host's containers. Uncomment
+  # to run it alongside SnipVault, then open http://<this-host>:8080. It reads the
+  # Docker socket read-only. You typically run just one Dozzle per host, so skip
+  # this if you already have one.
+  # dozzle:
+  #   image: amir20/dozzle:latest
+  #   container_name: dozzle
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   snipvault-data:
