@@ -1,0 +1,380 @@
+2026-07-24T21:21:39.074874466Z ▲ Next.js 16.1.6
+2026-07-24T21:21:39.075117546Z - Local:         http://localhost:3000
+2026-07-24T21:21:39.075124361Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:21:39.075178781Z 
+2026-07-24T21:21:39.075243286Z ✓ Starting...
+2026-07-24T21:21:39.083866707Z ⚠ Installing TypeScript as it was not found while loading "next.config.ts".
+2026-07-24T21:21:39.538475725Z 
+2026-07-24T21:21:39.538601432Z Installing devDependencies (yarn):
+2026-07-24T21:21:39.538631733Z - typescript
+2026-07-24T21:21:39.538976211Z 
+2026-07-24T21:21:39.734529331Z yarn add v1.22.22
+2026-07-24T21:21:39.752577257Z info No lockfile found.
+2026-07-24T21:21:39.771090966Z (node:42) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-07-24T21:21:39.771111716Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-24T21:21:39.773260200Z [1/4] Resolving packages...
+2026-07-24T21:21:47.432013347Z warning better-sqlite3 > prebuild-install@7.1.3: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
+2026-07-24T21:21:54.696339070Z [2/4] Fetching packages...
+2026-07-24T21:22:22.068362775Z [3/4] Linking dependencies...
+2026-07-24T21:22:22.080360002Z warning " > react-day-picker@8.10.1" has incorrect peer dependency "date-fns@^2.28.0 || ^3.0.0".
+2026-07-24T21:22:22.080387447Z warning " > react-day-picker@8.10.1" has incorrect peer dependency "react@^16.8.0 || ^17.0.0 || ^18.0.0".
+2026-07-24T21:22:25.195501596Z [4/4] Building fresh packages...
+2026-07-24T21:22:26.070625707Z success Saved lockfile.
+2026-07-24T21:22:26.095694177Z success Saved 208 new dependencies.
+2026-07-24T21:22:26.095866702Z info Direct dependencies
+2026-07-24T21:22:26.096296268Z ├─ @hookform/resolvers@3.10.0
+2026-07-24T21:22:26.096318715Z ├─ @radix-ui/react-accordion@1.2.2
+2026-07-24T21:22:26.096373697Z ├─ @radix-ui/react-alert-dialog@1.1.4
+2026-07-24T21:22:26.096379334Z ├─ @radix-ui/react-aspect-ratio@1.1.1
+2026-07-24T21:22:26.096382408Z ├─ @radix-ui/react-avatar@1.1.2
+2026-07-24T21:22:26.096385320Z ├─ @radix-ui/react-checkbox@1.1.3
+2026-07-24T21:22:26.096388399Z ├─ @radix-ui/react-context-menu@2.2.4
+2026-07-24T21:22:26.096391322Z ├─ @radix-ui/react-dropdown-menu@2.1.4
+2026-07-24T21:22:26.096394223Z ├─ @radix-ui/react-hover-card@1.1.4
+2026-07-24T21:22:26.096397115Z ├─ @radix-ui/react-label@2.1.1
+2026-07-24T21:22:26.096469128Z ├─ @radix-ui/react-menubar@1.1.4
+2026-07-24T21:22:26.096474127Z ├─ @radix-ui/react-navigation-menu@1.2.3
+2026-07-24T21:22:26.096490422Z ├─ @radix-ui/react-popover@1.1.4
+2026-07-24T21:22:26.096493143Z ├─ @radix-ui/react-progress@1.1.1
+2026-07-24T21:22:26.096495340Z ├─ @radix-ui/react-radio-group@1.2.2
+2026-07-24T21:22:26.096497528Z ├─ @radix-ui/react-scroll-area@1.2.2
+2026-07-24T21:22:26.096499661Z ├─ @radix-ui/react-select@2.1.4
+2026-07-24T21:22:26.096501785Z ├─ @radix-ui/react-separator@1.1.1
+2026-07-24T21:22:26.096503912Z ├─ @radix-ui/react-slider@1.2.2
+2026-07-24T21:22:26.096506037Z ├─ @radix-ui/react-switch@1.1.2
+2026-07-24T21:22:26.096508158Z ├─ @radix-ui/react-tabs@1.1.2
+2026-07-24T21:22:26.096510290Z ├─ @radix-ui/react-toast@1.2.4
+2026-07-24T21:22:26.096512424Z ├─ @radix-ui/react-toggle-group@1.1.1
+2026-07-24T21:22:26.096514547Z ├─ @radix-ui/react-tooltip@1.1.6
+2026-07-24T21:22:26.096516687Z ├─ @tailwindcss/postcss@4.3.3
+2026-07-24T21:22:26.096518824Z ├─ @tauri-apps/api@2.11.1
+2026-07-24T21:22:26.096520976Z ├─ @tauri-apps/cli@2.11.4
+2026-07-24T21:22:26.096523218Z ├─ @tauri-apps/plugin-dialog@2.7.2
+2026-07-24T21:22:26.096525356Z ├─ @tauri-apps/plugin-http@2.5.9
+2026-07-24T21:22:26.096527501Z ├─ @tauri-apps/plugin-process@2.3.1
+2026-07-24T21:22:26.096529644Z ├─ @tauri-apps/plugin-updater@2.10.1
+2026-07-24T21:22:26.096531771Z ├─ @types/better-sqlite3@7.6.13
+2026-07-24T21:22:26.096533913Z ├─ @types/node@22.20.1
+2026-07-24T21:22:26.096536039Z ├─ @types/react-dom@19.2.3
+2026-07-24T21:22:26.096538197Z ├─ @types/react@19.2.17
+2026-07-24T21:22:26.096540307Z ├─ autoprefixer@10.5.4
+2026-07-24T21:22:26.096542407Z ├─ better-sqlite3@12.11.1
+2026-07-24T21:22:26.096544579Z ├─ class-variance-authority@0.7.1
+2026-07-24T21:22:26.096710846Z ├─ cmdk@1.1.1
+2026-07-24T21:22:26.096714020Z ├─ date-fns@4.1.0
+2026-07-24T21:22:26.096716266Z ├─ embla-carousel-react@8.5.1
+2026-07-24T21:22:26.096718448Z ├─ highlight.js@11.11.1
+2026-07-24T21:22:26.096720577Z ├─ input-otp@1.4.1
+2026-07-24T21:22:26.096722699Z ├─ lucide-react@0.544.0
+2026-07-24T21:22:26.096724831Z ├─ next-themes@0.4.6
+2026-07-24T21:22:26.096726957Z ├─ next@16.1.6
+2026-07-24T21:22:26.096729070Z ├─ postcss@8.5.23
+2026-07-24T21:22:26.096731230Z ├─ react-day-picker@8.10.1
+2026-07-24T21:22:26.096733366Z ├─ react-dom@19.2.8
+2026-07-24T21:22:26.096735484Z ├─ react-hook-form@7.82.0
+2026-07-24T21:22:26.096737630Z ├─ react-resizable-panels@2.1.9
+2026-07-24T21:22:26.096739756Z ├─ react@19.2.8
+2026-07-24T21:22:26.096746290Z ├─ sonner@1.7.4
+2026-07-24T21:22:26.096748536Z ├─ swr@2.4.2
+2026-07-24T21:22:26.096750681Z ├─ tailwind-merge@2.6.1
+2026-07-24T21:22:26.096753599Z ├─ tailwindcss-animate@1.0.7
+2026-07-24T21:22:26.096755768Z ├─ tailwindcss@3.4.19
+2026-07-24T21:22:26.096757870Z ├─ typescript@7.0.2
+2026-07-24T21:22:26.096760016Z ├─ vaul@1.1.2
+2026-07-24T21:22:26.096762117Z └─ zod@3.25.76
+2026-07-24T21:22:26.096764336Z info All dependencies
+2026-07-24T21:22:26.096915329Z ├─ @floating-ui/core@1.8.0
+2026-07-24T21:22:26.096920427Z ├─ @floating-ui/dom@1.8.0
+2026-07-24T21:22:26.096922690Z ├─ @floating-ui/react-dom@2.1.9
+2026-07-24T21:22:26.096924866Z ├─ @hookform/resolvers@3.10.0
+2026-07-24T21:22:26.096927027Z ├─ @img/colour@1.1.0
+2026-07-24T21:22:26.096929170Z ├─ @img/sharp-linux-x64@0.34.5
+2026-07-24T21:22:26.096931340Z ├─ @img/sharp-linuxmusl-x64@0.34.5
+2026-07-24T21:22:26.096933489Z ├─ @jridgewell/gen-mapping@0.3.13
+2026-07-24T21:22:26.096935597Z ├─ @jridgewell/remapping@2.3.5
+2026-07-24T21:22:26.096937706Z ├─ @jridgewell/resolve-uri@3.1.2
+2026-07-24T21:22:26.096939827Z ├─ @jridgewell/sourcemap-codec@1.5.5
+2026-07-24T21:22:26.096941968Z ├─ @next/env@16.1.6
+2026-07-24T21:22:26.096944117Z ├─ @next/swc-linux-x64-gnu@16.1.6
+2026-07-24T21:22:26.096946257Z ├─ @next/swc-linux-x64-musl@16.1.6
+2026-07-24T21:22:26.096948422Z ├─ @nodelib/fs.scandir@2.1.5
+2026-07-24T21:22:26.096950559Z ├─ @nodelib/fs.stat@2.0.5
+2026-07-24T21:22:26.096952691Z ├─ @nodelib/fs.walk@1.2.8
+2026-07-24T21:22:26.096954785Z ├─ @radix-ui/react-accordion@1.2.2
+2026-07-24T21:22:26.096956898Z ├─ @radix-ui/react-alert-dialog@1.1.4
+2026-07-24T21:22:26.096959053Z ├─ @radix-ui/react-arrow@1.1.1
+2026-07-24T21:22:26.096961176Z ├─ @radix-ui/react-aspect-ratio@1.1.1
+2026-07-24T21:22:26.096963307Z ├─ @radix-ui/react-avatar@1.1.2
+2026-07-24T21:22:26.096965430Z ├─ @radix-ui/react-checkbox@1.1.3
+2026-07-24T21:22:26.096967583Z ├─ @radix-ui/react-context-menu@2.2.4
+2026-07-24T21:22:26.097108130Z ├─ @radix-ui/react-dropdown-menu@2.1.4
+2026-07-24T21:22:26.097111300Z ├─ @radix-ui/react-hover-card@1.1.4
+2026-07-24T21:22:26.097113561Z ├─ @radix-ui/react-label@2.1.1
+2026-07-24T21:22:26.097115729Z ├─ @radix-ui/react-menubar@1.1.4
+2026-07-24T21:22:26.097117900Z ├─ @radix-ui/react-navigation-menu@1.2.3
+2026-07-24T21:22:26.097120665Z ├─ @radix-ui/react-popover@1.1.4
+2026-07-24T21:22:26.097122809Z ├─ @radix-ui/react-progress@1.1.1
+2026-07-24T21:22:26.097128654Z ├─ @radix-ui/react-radio-group@1.2.2
+2026-07-24T21:22:26.097130928Z ├─ @radix-ui/react-scroll-area@1.2.2
+2026-07-24T21:22:26.097133061Z ├─ @radix-ui/react-select@2.1.4
+2026-07-24T21:22:26.097135191Z ├─ @radix-ui/react-separator@1.1.1
+2026-07-24T21:22:26.097137338Z ├─ @radix-ui/react-slider@1.2.2
+2026-07-24T21:22:26.097139475Z ├─ @radix-ui/react-switch@1.1.2
+2026-07-24T21:22:26.097141659Z ├─ @radix-ui/react-tabs@1.1.2
+2026-07-24T21:22:26.097143784Z ├─ @radix-ui/react-toast@1.2.4
+2026-07-24T21:22:26.097145923Z ├─ @radix-ui/react-toggle-group@1.1.1
+2026-07-24T21:22:26.097148050Z ├─ @radix-ui/react-tooltip@1.1.6
+2026-07-24T21:22:26.097150242Z ├─ @radix-ui/react-use-escape-keydown@1.1.0
+2026-07-24T21:22:26.097152395Z ├─ @radix-ui/react-use-rect@1.1.0
+2026-07-24T21:22:26.097154534Z ├─ @swc/helpers@0.5.15
+2026-07-24T21:22:26.097156652Z ├─ @tailwindcss/node@4.3.3
+2026-07-24T21:22:26.097158802Z ├─ @tailwindcss/oxide-linux-x64-gnu@4.3.3
+2026-07-24T21:22:26.097160958Z ├─ @tailwindcss/oxide-linux-x64-musl@4.3.3
+2026-07-24T21:22:26.097163113Z ├─ @tailwindcss/oxide@4.3.3
+2026-07-24T21:22:26.097165244Z ├─ @tailwindcss/postcss@4.3.3
+2026-07-24T21:22:26.097167389Z ├─ @tauri-apps/api@2.11.1
+2026-07-24T21:22:26.097169511Z ├─ @tauri-apps/cli-linux-x64-gnu@2.11.4
+2026-07-24T21:22:26.097171634Z ├─ @tauri-apps/cli-linux-x64-musl@2.11.4
+2026-07-24T21:22:26.097173784Z ├─ @tauri-apps/cli@2.11.4
+2026-07-24T21:22:26.097175942Z ├─ @tauri-apps/plugin-dialog@2.7.2
+2026-07-24T21:22:26.097178075Z ├─ @tauri-apps/plugin-http@2.5.9
+2026-07-24T21:22:26.097180201Z ├─ @tauri-apps/plugin-process@2.3.1
+2026-07-24T21:22:26.097182334Z ├─ @tauri-apps/plugin-updater@2.10.1
+2026-07-24T21:22:26.097184468Z ├─ @types/better-sqlite3@7.6.13
+2026-07-24T21:22:26.097186595Z ├─ @types/node@22.20.1
+2026-07-24T21:22:26.097188710Z ├─ @types/react-dom@19.2.3
+2026-07-24T21:22:26.097190859Z ├─ @types/react@19.2.17
+2026-07-24T21:22:26.097192981Z ├─ @typescript/typescript-linux-x64@7.0.2
+2026-07-24T21:22:26.097195124Z ├─ anymatch@3.1.3
+2026-07-24T21:22:26.097197446Z ├─ arg@5.0.2
+2026-07-24T21:22:26.097199616Z ├─ aria-hidden@1.2.6
+2026-07-24T21:22:26.097201770Z ├─ autoprefixer@10.5.4
+2026-07-24T21:22:26.097203892Z ├─ base64-js@1.5.1
+2026-07-24T21:22:26.097206037Z ├─ baseline-browser-mapping@2.11.1
+2026-07-24T21:22:26.097208201Z ├─ better-sqlite3@12.11.1
+2026-07-24T21:22:26.097210335Z ├─ binary-extensions@2.3.0
+2026-07-24T21:22:26.097214408Z ├─ bindings@1.5.0
+2026-07-24T21:22:26.097476896Z ├─ bl@4.1.0
+2026-07-24T21:22:26.097480271Z ├─ braces@3.0.3
+2026-07-24T21:22:26.097482473Z ├─ browserslist@4.28.7
+2026-07-24T21:22:26.097484578Z ├─ buffer@5.7.1
+2026-07-24T21:22:26.097486724Z ├─ camelcase-css@2.0.1
+2026-07-24T21:22:26.097488950Z ├─ caniuse-lite@1.0.30001806
+2026-07-24T21:22:26.097491076Z ├─ chokidar@3.6.0
+2026-07-24T21:22:26.097493220Z ├─ chownr@1.1.4
+2026-07-24T21:22:26.097495398Z ├─ class-variance-authority@0.7.1
+2026-07-24T21:22:26.097497524Z ├─ client-only@0.0.1
+2026-07-24T21:22:26.097499672Z ├─ cmdk@1.1.1
+2026-07-24T21:22:26.097501789Z ├─ commander@4.1.1
+2026-07-24T21:22:26.097503921Z ├─ cssesc@3.0.0
+2026-07-24T21:22:26.097506084Z ├─ csstype@3.2.3
+2026-07-24T21:22:26.097508221Z ├─ date-fns@4.1.0
+2026-07-24T21:22:26.097510367Z ├─ decompress-response@6.0.0
+2026-07-24T21:22:26.097512476Z ├─ deep-extend@0.6.0
+2026-07-24T21:22:26.097514678Z ├─ dequal@2.0.3
+2026-07-24T21:22:26.097516822Z ├─ detect-libc@2.1.2
+2026-07-24T21:22:26.097518957Z ├─ detect-node-es@1.1.0
+2026-07-24T21:22:26.097521100Z ├─ didyoumean@1.2.2
+2026-07-24T21:22:26.097523315Z ├─ dlv@1.1.3
+2026-07-24T21:22:26.097525473Z ├─ electron-to-chromium@1.5.396
+2026-07-24T21:22:26.097527626Z ├─ embla-carousel-react@8.5.1
+2026-07-24T21:22:26.097529824Z ├─ embla-carousel-reactive-utils@8.5.1
+2026-07-24T21:22:26.097531969Z ├─ embla-carousel@8.5.1
+2026-07-24T21:22:26.097534084Z ├─ end-of-stream@1.4.5
+2026-07-24T21:22:26.097536202Z ├─ enhanced-resolve@5.24.3
+2026-07-24T21:22:26.097538324Z ├─ es-errors@1.3.0
+2026-07-24T21:22:26.097540479Z ├─ escalade@3.2.0
+2026-07-24T21:22:26.097542618Z ├─ expand-template@2.0.3
+2026-07-24T21:22:26.097544734Z ├─ fast-glob@3.3.3
+2026-07-24T21:22:26.097546910Z ├─ fastq@1.20.1
+2026-07-24T21:22:26.097549059Z ├─ file-uri-to-path@1.0.0
+2026-07-24T21:22:26.097551196Z ├─ fill-range@7.1.1
+2026-07-24T21:22:26.097553336Z ├─ fraction.js@5.3.4
+2026-07-24T21:22:26.097555500Z ├─ fs-constants@1.0.0
+2026-07-24T21:22:26.097557693Z ├─ function-bind@1.1.2
+2026-07-24T21:22:26.097559830Z ├─ get-nonce@1.0.1
+2026-07-24T21:22:26.097562006Z ├─ github-from-package@0.0.0
+2026-07-24T21:22:26.097564143Z ├─ glob-parent@5.1.2
+2026-07-24T21:22:26.097566291Z ├─ graceful-fs@4.2.11
+2026-07-24T21:22:26.097574958Z ├─ hasown@2.0.4
+2026-07-24T21:22:26.097577295Z ├─ highlight.js@11.11.1
+2026-07-24T21:22:26.097579585Z ├─ ieee754@1.2.1
+2026-07-24T21:22:26.097581832Z ├─ ini@1.3.8
+2026-07-24T21:22:26.097583972Z ├─ input-otp@1.4.1
+2026-07-24T21:22:26.097586126Z ├─ is-binary-path@2.1.0
+2026-07-24T21:22:26.097588247Z ├─ is-core-module@2.16.2
+2026-07-24T21:22:26.097590372Z ├─ is-extglob@2.1.1
+2026-07-24T21:22:26.097592518Z ├─ is-glob@4.0.3
+2026-07-24T21:22:26.097594648Z ├─ is-number@7.0.0
+2026-07-24T21:22:26.097596794Z ├─ jiti@1.21.7
+2026-07-24T21:22:26.097598999Z ├─ lightningcss-linux-x64-gnu@1.32.0
+2026-07-24T21:22:26.097601200Z ├─ lightningcss-linux-x64-musl@1.32.0
+2026-07-24T21:22:26.097603975Z ├─ lightningcss@1.32.0
+2026-07-24T21:22:26.097606096Z ├─ lilconfig@3.1.3
+2026-07-24T21:22:26.097608222Z ├─ lines-and-columns@1.2.4
+2026-07-24T21:22:26.097610364Z ├─ lucide-react@0.544.0
+2026-07-24T21:22:26.097612577Z ├─ magic-string@0.30.21
+2026-07-24T21:22:26.097614840Z ├─ merge2@1.4.1
+2026-07-24T21:22:26.097617013Z ├─ mimic-response@3.1.0
+2026-07-24T21:22:26.097619131Z ├─ minimist@1.2.8
+2026-07-24T21:22:26.097621282Z ├─ mkdirp-classic@0.5.3
+2026-07-24T21:22:26.097623405Z ├─ mz@2.7.0
+2026-07-24T21:22:26.097625529Z ├─ nanoid@3.3.16
+2026-07-24T21:22:26.097627657Z ├─ napi-build-utils@2.0.0
+2026-07-24T21:22:26.097629770Z ├─ next-themes@0.4.6
+2026-07-24T21:22:26.097631921Z ├─ next@16.1.6
+2026-07-24T21:22:26.097634064Z ├─ node-abi@3.94.0
+2026-07-24T21:22:26.097636194Z ├─ node-releases@2.0.51
+2026-07-24T21:22:26.097638314Z ├─ object-assign@4.1.1
+2026-07-24T21:22:26.097640458Z ├─ object-hash@3.0.0
+2026-07-24T21:22:26.097642606Z ├─ once@1.4.0
+2026-07-24T21:22:26.097644732Z ├─ path-parse@1.0.7
+2026-07-24T21:22:26.097646874Z ├─ picomatch@2.3.2
+2026-07-24T21:22:26.097649001Z ├─ pify@2.3.0
+2026-07-24T21:22:26.097651146Z ├─ pirates@4.0.7
+2026-07-24T21:22:26.097653301Z ├─ postcss-import@15.1.0
+2026-07-24T21:22:26.097655521Z ├─ postcss-js@4.1.0
+2026-07-24T21:22:26.097658069Z ├─ postcss-load-config@6.0.1
+2026-07-24T21:22:26.097660297Z ├─ postcss-nested@6.2.0
+2026-07-24T21:22:26.097662442Z ├─ postcss-selector-parser@6.1.4
+2026-07-24T21:22:26.097664600Z ├─ postcss-value-parser@4.2.0
+2026-07-24T21:22:26.097666762Z ├─ postcss@8.5.23
+2026-07-24T21:22:26.097671663Z ├─ prebuild-install@7.1.3
+2026-07-24T21:22:26.097673861Z ├─ queue-microtask@1.2.3
+2026-07-24T21:22:26.097676002Z ├─ rc@1.2.8
+2026-07-24T21:22:26.097678341Z ├─ react-day-picker@8.10.1
+2026-07-24T21:22:26.097680727Z ├─ react-dom@19.2.8
+2026-07-24T21:22:26.097682930Z ├─ react-hook-form@7.82.0
+2026-07-24T21:22:26.097685201Z ├─ react-remove-scroll-bar@2.3.8
+2026-07-24T21:22:26.097687423Z ├─ react-remove-scroll@2.7.2
+2026-07-24T21:22:26.097689588Z ├─ react-resizable-panels@2.1.9
+2026-07-24T21:22:26.097691846Z ├─ react-style-singleton@2.2.3
+2026-07-24T21:22:26.097694067Z ├─ react@19.2.8
+2026-07-24T21:22:26.097696408Z ├─ read-cache@1.0.0
+2026-07-24T21:22:26.097698612Z ├─ readable-stream@3.6.2
+2026-07-24T21:22:26.097700729Z ├─ readdirp@3.6.0
+2026-07-24T21:22:26.097702873Z ├─ resolve@1.22.12
+2026-07-24T21:22:26.097704999Z ├─ reusify@1.1.0
+2026-07-24T21:22:26.097707233Z ├─ run-parallel@1.2.0
+2026-07-24T21:22:26.097709429Z ├─ safe-buffer@5.2.1
+2026-07-24T21:22:26.097711572Z ├─ scheduler@0.27.0
+2026-07-24T21:22:26.097713731Z ├─ semver@7.8.5
+2026-07-24T21:22:26.097715927Z ├─ sharp@0.34.5
+2026-07-24T21:22:26.097718056Z ├─ simple-concat@1.0.1
+2026-07-24T21:22:26.097720184Z ├─ simple-get@4.0.1
+2026-07-24T21:22:26.097722326Z ├─ sonner@1.7.4
+2026-07-24T21:22:26.097724473Z ├─ string_decoder@1.3.0
+2026-07-24T21:22:26.097726617Z ├─ strip-json-comments@2.0.1
+2026-07-24T21:22:26.097728749Z ├─ styled-jsx@5.1.6
+2026-07-24T21:22:26.097730994Z ├─ sucrase@3.35.1
+2026-07-24T21:22:26.097733133Z ├─ supports-preserve-symlinks-flag@1.0.0
+2026-07-24T21:22:26.097735507Z ├─ swr@2.4.2
+2026-07-24T21:22:26.097737645Z ├─ tailwind-merge@2.6.1
+2026-07-24T21:22:26.098350145Z ├─ tailwindcss-animate@1.0.7
+2026-07-24T21:22:26.098356071Z ├─ tailwindcss@3.4.19
+2026-07-24T21:22:26.098358413Z ├─ tapable@2.3.3
+2026-07-24T21:22:26.098360558Z ├─ tar-fs@2.1.5
+2026-07-24T21:22:26.098362695Z ├─ tar-stream@2.2.0
+2026-07-24T21:22:26.098364841Z ├─ thenify-all@1.6.0
+2026-07-24T21:22:26.098366969Z ├─ thenify@3.3.1
+2026-07-24T21:22:26.098369075Z ├─ tinyglobby@0.2.17
+2026-07-24T21:22:26.098371268Z ├─ to-regex-range@5.0.1
+2026-07-24T21:22:26.098373394Z ├─ ts-interface-checker@0.1.13
+2026-07-24T21:22:26.098375525Z ├─ tunnel-agent@0.6.0
+2026-07-24T21:22:26.098381889Z ├─ typescript@7.0.2
+2026-07-24T21:22:26.098384141Z ├─ undici-types@6.21.0
+2026-07-24T21:22:26.098386336Z ├─ update-browserslist-db@1.2.3
+2026-07-24T21:22:26.098388468Z ├─ use-callback-ref@1.3.3
+2026-07-24T21:22:26.098390596Z ├─ use-sidecar@1.1.3
+2026-07-24T21:22:26.098392813Z ├─ use-sync-external-store@1.6.0
+2026-07-24T21:22:26.098394938Z ├─ util-deprecate@1.0.2
+2026-07-24T21:22:26.098397042Z ├─ vaul@1.1.2
+2026-07-24T21:22:26.098399145Z ├─ wrappy@1.0.2
+2026-07-24T21:22:26.098401272Z └─ zod@3.25.76
+2026-07-24T21:22:26.099640693Z Done in 46.37s.
+2026-07-24T21:22:26.155623698Z 
+2026-07-24T21:22:26.156071782Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:26.160481409Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:26.160496755Z     at ignore-listed frames {
+2026-07-24T21:22:26.160499633Z   [cause]: Error: Cannot find module 'typescript'
+2026-07-24T21:22:26.160501947Z   Require stack:
+2026-07-24T21:22:26.160504428Z   - /app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/build/next-config-ts/transpile-config.js
+2026-07-24T21:22:26.160506875Z   - /app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/server/config.js
+2026-07-24T21:22:26.160509312Z   - /app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/cli/next-test.js
+2026-07-24T21:22:26.160511599Z   - /app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/bin/next
+2026-07-24T21:22:26.160513869Z       at ignore-listed frames {
+2026-07-24T21:22:26.160516238Z     code: 'MODULE_NOT_FOUND',
+2026-07-24T21:22:26.160518355Z     requireStack: [
+2026-07-24T21:22:26.160520495Z       '/app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/build/next-config-ts/transpile-config.js',
+2026-07-24T21:22:26.160522911Z       '/app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/server/config.js',
+2026-07-24T21:22:26.160525201Z       '/app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/cli/next-test.js',
+2026-07-24T21:22:26.160527521Z       '/app/node_modules/.pnpm/next@16.1.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/bin/next'
+2026-07-24T21:22:26.160529826Z     ]
+2026-07-24T21:22:26.160531971Z   }
+2026-07-24T21:22:26.160534068Z }
+2026-07-24T21:22:27.129668012Z ▲ Next.js 16.1.6
+2026-07-24T21:22:27.129850381Z - Local:         http://localhost:3000
+2026-07-24T21:22:27.129866212Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:27.130187306Z 
+2026-07-24T21:22:27.130194483Z ✓ Starting...
+2026-07-24T21:22:27.136612488Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:27.139831019Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:27.139846201Z     at ignore-listed frames {
+2026-07-24T21:22:27.139849103Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:27.139851512Z       at ignore-listed frames
+2026-07-24T21:22:27.139853719Z }
+2026-07-24T21:22:27.843714728Z ▲ Next.js 16.1.6
+2026-07-24T21:22:27.843933385Z - Local:         http://localhost:3000
+2026-07-24T21:22:27.843946910Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:27.844023451Z 
+2026-07-24T21:22:27.844114753Z ✓ Starting...
+2026-07-24T21:22:27.850758865Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:27.854018273Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:27.854039493Z     at ignore-listed frames {
+2026-07-24T21:22:27.854043309Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:27.854046687Z       at ignore-listed frames
+2026-07-24T21:22:27.854049700Z }
+2026-07-24T21:22:28.820037119Z ▲ Next.js 16.1.6
+2026-07-24T21:22:28.820219767Z - Local:         http://localhost:3000
+2026-07-24T21:22:28.820275611Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:28.820460669Z 
+2026-07-24T21:22:28.820487343Z ✓ Starting...
+2026-07-24T21:22:28.827100125Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:28.830300662Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:28.830320509Z     at ignore-listed frames {
+2026-07-24T21:22:28.830324309Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:28.830327682Z       at ignore-listed frames
+2026-07-24T21:22:28.830330692Z }
+2026-07-24T21:22:30.158233892Z ▲ Next.js 16.1.6
+2026-07-24T21:22:30.159844904Z - Local:         http://localhost:3000
+2026-07-24T21:22:30.159857419Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:30.159861060Z 
+2026-07-24T21:22:30.159864338Z ✓ Starting...
+2026-07-24T21:22:30.165222024Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:30.168478685Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:30.168498053Z     at ignore-listed frames {
+2026-07-24T21:22:30.168510860Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:30.168513661Z       at ignore-listed frames
+2026-07-24T21:22:30.168515915Z }
+2026-07-24T21:22:32.319283735Z ▲ Next.js 16.1.6
+2026-07-24T21:22:32.319469437Z - Local:         http://localhost:3000
+2026-07-24T21:22:32.319651257Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:32.319663185Z 
+2026-07-24T21:22:32.319667059Z ✓ Starting...
+2026-07-24T21:22:32.326233117Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:32.329431387Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:32.329458294Z     at ignore-listed frames {
+2026-07-24T21:22:32.329462699Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:32.329465963Z       at ignore-listed frames
+2026-07-24T21:22:32.329468874Z }
+2026-07-24T21:22:36.068810709Z ▲ Next.js 16.1.6
+2026-07-24T21:22:36.069131284Z - Local:         http://localhost:3000
+2026-07-24T21:22:36.069144391Z - Network:       http://0.0.0.0:3000
+2026-07-24T21:22:36.069150621Z 
+2026-07-24T21:22:36.069224563Z ✓ Starting...
+2026-07-24T21:22:36.075784973Z ⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+2026-07-24T21:22:36.078999373Z Error: Failed to transpile "next.config.ts".
+2026-07-24T21:22:36.079019532Z     at ignore-listed frames {
+2026-07-24T21:22:36.079023330Z   [cause]: TypeError: Cannot read properties of undefined (reading 'fileExists')
+2026-07-24T21:22:36.079026619Z       at ignore-listed frames
+2026-07-24T21:22:36.079029573Z }

@@ -1,0 +1,177 @@
+2026-07-24T21:08:20.872287880Z ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-11.17.0.tgz
+2026-07-24T21:08:23.201904882Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:23.201930178Z 
+2026-07-24T21:08:23.201933361Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:23.260266116Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:23.260287440Z 
+2026-07-24T21:08:23.260290208Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:23.260292693Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:23.260294936Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:23.260297149Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:23.260299514Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:23.260301754Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:23.260303958Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:23.260306166Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:23.260308371Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:23.260310572Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:23.260312940Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:25.171801798Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:25.171825958Z 
+2026-07-24T21:08:25.171829616Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:25.214148824Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:25.214170635Z 
+2026-07-24T21:08:25.214174272Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:25.214177546Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:25.214180915Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:25.214184009Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:25.214199201Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:25.214201747Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:25.214203980Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:25.214206235Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:25.214208476Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:25.214210712Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:25.214213063Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:27.162199462Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:27.162226606Z 
+2026-07-24T21:08:27.162230190Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:27.204429232Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:27.204453166Z 
+2026-07-24T21:08:27.204456958Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:27.204460564Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:27.204463637Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:27.204466686Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:27.204469724Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:27.204473046Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:27.204476149Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:27.204479168Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:27.204482214Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:27.204485266Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:27.204488319Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:29.350695957Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:29.350730539Z 
+2026-07-24T21:08:29.350733582Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:29.393783450Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:29.393804154Z 
+2026-07-24T21:08:29.393807057Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:29.393809760Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:29.393812452Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:29.393814747Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:29.393816983Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:29.393819238Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:29.393821460Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:29.393823724Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:29.393825976Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:29.393828219Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:29.393830491Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:31.956994105Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:31.957019091Z 
+2026-07-24T21:08:31.957023045Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:31.999336890Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:31.999358688Z 
+2026-07-24T21:08:31.999362349Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:31.999365650Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:31.999368826Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:31.999371872Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:31.999375170Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:31.999378272Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:31.999392725Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:31.999395294Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:31.999397595Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:31.999399817Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:31.999402088Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:35.349319716Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:35.349343860Z 
+2026-07-24T21:08:35.349347512Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:35.390731262Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:35.390752593Z 
+2026-07-24T21:08:35.390756216Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:35.390759549Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:35.390762642Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:35.390765721Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:35.390768777Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:35.390771871Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:35.390783462Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:35.390787888Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:35.390791237Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:35.390794334Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:35.390797405Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:40.295348749Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:40.295373809Z 
+2026-07-24T21:08:40.295377578Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:40.337679437Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:40.337712305Z 
+2026-07-24T21:08:40.337715284Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:40.337717716Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:40.337720029Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:40.337722294Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:40.337724671Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:40.337726907Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:40.337729104Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:40.337731297Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:40.337733521Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:40.337735776Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:40.337738013Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:08:48.492157701Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:08:48.492182359Z 
+2026-07-24T21:08:48.492186200Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:08:48.534906058Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:48.534927745Z 
+2026-07-24T21:08:48.534931386Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:08:48.534934670Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:08:48.534937792Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:08:48.534940921Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:08:48.534943970Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:08:48.534947043Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:08:48.534950191Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:08:48.534953270Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:08:48.534967379Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:08:48.534969915Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:08:48.534972159Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:09:03.050199693Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:09:03.050224029Z 
+2026-07-24T21:09:03.050227873Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:09:03.092627545Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:09:03.092648872Z 
+2026-07-24T21:09:03.092652549Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:09:03.092655857Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:09:03.092659006Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:09:03.092662104Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:09:03.092665171Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:09:03.092668258Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:09:03.092671315Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:09:03.092674634Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:09:03.092677750Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:09:03.092680861Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:09:03.092683944Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:09:30.453134509Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:09:30.453160087Z 
+2026-07-24T21:09:30.453163705Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:09:30.510688142Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:09:30.510709709Z 
+2026-07-24T21:09:30.510713216Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:09:30.510727800Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:09:30.510730628Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:09:30.510732933Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:09:30.510735154Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:09:30.510737460Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:09:30.510739713Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:09:30.510741936Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:09:30.510744158Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:09:30.510746373Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:09:30.510748636Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
+2026-07-24T21:10:23.445502087Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-07-24T21:10:23.445530753Z 
+2026-07-24T21:10:23.445534725Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-07-24T21:10:23.488003140Z [ERROR] Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:10:23.488028219Z 
+2026-07-24T21:10:23.488032020Z pnpm: Command failed with exit code 1: /usr/local/bin/node /home/node/.cache/node/corepack/v1/pnpm/11.17.0/bin/pnpm.mjs install --production
+2026-07-24T21:10:23.488035382Z     at getFinalError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:88203:14)
+2026-07-24T21:10:23.488038519Z     at makeError (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:90510:21)
+2026-07-24T21:10:23.488041690Z     at getSyncResult (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92354:10)
+2026-07-24T21:10:23.488044807Z     at spawnSubprocessSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92314:14)
+2026-07-24T21:10:23.488047919Z     at execaCoreSync (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:92244:23)
+2026-07-24T21:10:23.488051093Z     at callBoundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94772:23)
+2026-07-24T21:10:23.488054287Z     at boundExeca (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94749:49)
+2026-07-24T21:10:23.488057335Z     at sync2 (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:94908:10)
+2026-07-24T21:10:23.488071179Z     at runPnpmCli (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:249521:5)
+2026-07-24T21:10:23.488073720Z     at runDepsStatusCheck (file:///home/node/.cache/node/corepack/v1/pnpm/11.17.0/dist/pnpm.mjs:251287:7)
