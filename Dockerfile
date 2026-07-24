@@ -36,8 +36,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-RUN corepack enable
-
 # The SQLite file lives here; declared as a volume so data survives rebuilds.
 RUN mkdir -p /app/data && chown -R node:node /app
 VOLUME /app/data
@@ -51,5 +49,11 @@ COPY --from=builder --chown=node:node /app/next.config.ts ./next.config.ts
 USER node
 EXPOSE 3000
 
-# Binds 0.0.0.0 so the server is reachable from other machines on the LAN.
-CMD ["pnpm", "serve"]
+# Start Next.js directly rather than via `pnpm serve`. Going through pnpm would
+# trigger its pre-run "verify deps" check, which — because node_modules was
+# pruned to prod-only — tries to reinstall/purge at startup and aborts without a
+# TTY (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY), crash-looping the container.
+# Invoking the Next binary skips pnpm (and the corepack download) entirely.
+# `-H 0.0.0.0` binds all interfaces so the server is reachable across the LAN;
+# the port comes from $PORT (3000).
+CMD ["node_modules/.bin/next", "start", "-H", "0.0.0.0"]
