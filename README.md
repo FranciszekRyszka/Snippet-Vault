@@ -153,4 +153,4 @@ scripts/        SQL migrations and the Tauri build script
 src-tauri/      Rust source for the desktop app
 ```
 
-See [TAURI_BUILD.md](./TAURI_BUILD.md) for detailed desktop build instructions.
+See [docs/TAURI_BUILD.md](./docs/TAURI_BUILD.md) for detailed desktop build instructions.
