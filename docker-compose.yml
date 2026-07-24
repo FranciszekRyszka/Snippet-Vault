@@ -4,21 +4,27 @@
 #   2. docker compose up -d
 #   3. Point each SnipVault desktop app at http://<this-host>:3000 with the token.
 #
+# By default this pulls the prebuilt image from GitHub Container Registry — no
+# local build needed. To build from this repo's source instead, comment out the
+# `image:` line and uncomment `build: .`.
+#
 # The library is stored in the named volume `snipvault-data`, so it survives
 # container rebuilds and image updates.
 
 services:
   snipvault:
-    build: .
-    # Or pull a prebuilt image instead of building locally:
-    # image: ghcr.io/franciszekryszka/snippet-vault:latest
+    image: ghcr.io/franciszekryszka/snippet-vault:latest
+    # build: .   # uncomment (and comment out `image:` above) to build locally
     container_name: snipvault
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      # Required for a real deployment. If omitted, the API is UNAUTHENTICATED.
-      SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:?Set SNIPVAULT_TOKEN in your .env file}
+      # The access token every SnipVault app must present to reach this server.
+      # Don't hard-code it here — set SNIPVAULT_TOKEN in your .env file (Docker
+      # Compose loads .env automatically). See .env.example for how to generate
+      # one. The server won't start until it's set, so the API is never left open.
+      SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:?missing SNIPVAULT_TOKEN — set it in .env (see .env.example)}
     volumes:
       - snipvault-data:/app/data
 
