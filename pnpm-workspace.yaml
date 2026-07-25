@@ -5,3 +5,19 @@ onlyBuiltDependencies:
   - better-sqlite3
   - sharp
   - "@tauri-apps/cli"
+
+# Advisories waived for `pnpm audit`. Every ID here is BUILD-TIME-only and
+# transitive, pinned by upstream (Next's bundled image/CSS tooling, or the
+# Tailwind/autoprefixer chain). The server image runs `next start` over prebuilt
+# output, so none are reachable by a request at runtime. The runtime-reachable
+# surface (next itself, better-sqlite3) is NOT waived and still fails CI. Full
+# rationale in security.md; revisit these on Next/Tailwind upgrades.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-f88m-g3jw-g9cj # sharp: inherited libvips CVEs (Next image opt; images.unoptimized)
+    - GHSA-6g55-p6wh-862q # postcss: arbitrary file read (build-time CSS, Next-bundled)
+    - GHSA-r28c-9q8g-f849 # postcss: source-map path traversal (build-time CSS)
+    - GHSA-qx2v-qp2m-jg93 # postcss: XSS via unescaped </style> (build-time CSS)
+    - GHSA-48c2-rrv3-qjmp # yaml: stack overflow parsing config (tailwind build)
+    - GHSA-c2c7-rcm5-vvqj # picomatch: ReDoS (tailwind glob, build-time)
+    - GHSA-3v7f-55p6-f55p # picomatch: method injection (tailwind glob, build-time)

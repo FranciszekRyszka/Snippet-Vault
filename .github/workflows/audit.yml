@@ -38,7 +38,13 @@ jobs:
 
       - name: Audit Rust dependencies
         working-directory: ./src-tauri
-        run: cargo audit
+        # Waived IDs are both BUILD-TIME advisories in quick-xml, pulled in only
+        # via plist -> tauri-utils to parse our own Info.plist during the Tauri
+        # build — not reachable at runtime, and pinned by plist/tauri upstream
+        # (can't move to >=0.41 without them moving). Rationale in security.md.
+        # The unmaintained gtk-rs GTK3 warnings are warnings (not vulns) and
+        # don't fail the run. Runtime crates are NOT waived and still fail CI.
+        run: cargo audit --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
 
   pnpm-audit:
     runs-on: ubuntu-latest
