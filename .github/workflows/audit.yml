@@ -1,0 +1,67 @@
+# Dependency vulnerability audit for both toolchains: `cargo audit` for the Rust
+# (Tauri) crates and `pnpm audit` for the npm deps. Runs on pushes/PRs that touch
+# a manifest or lockfile, plus a weekly schedule so newly disclosed advisories
+# are caught even without a code change.
+name: Security audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust dependencies
+        working-directory: ./src-tauri
+        run: cargo audit
+
+  pnpm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fail only on production-dependency advisories — that's what ships in the
+      # server image and the desktop bundle. Dev/build-time tooling is reported
+      # but doesn't break the build.
+      - name: Audit production dependencies
+        run: pnpm audit --prod

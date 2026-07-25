@@ -2,6 +2,15 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { sanitizeTags, sanitizeModel, validTimestampOr } from "@/lib/api-utils";
 
+// Resource ceilings for a sync push. App Router route handlers don't inherit the
+// old Pages-API body-size limit, so without these a single request could buffer
+// an unbounded body into memory and bloat the SQLite file. The limits are far
+// above any realistic library so honest clients never hit them.
+const MAX_BODY_BYTES = 25 * 1024 * 1024; // 25 MB whole-request cap
+const MAX_RECORDS = 100_000; // per-request record count
+const MAX_CODE_LEN = 500_000; // per-snippet code/body length
+const MAX_DESC_LEN = 100_000; // per-snippet description length
+
 // One record as it travels over the wire between a client and the sync server.
 // It's the full snippet shape keyed by `uuid` (the stable cross-machine
 // identity), plus the `deleted` tombstone flag — everything needed to
@@ -86,8 +95,11 @@ function normalizeIncoming(raw: unknown): {
   return {
     uuid,
     title: title.slice(0, 255),
-    description: typeof r.description === "string" ? r.description : "",
-    code,
+    description:
+      typeof r.description === "string"
+        ? r.description.slice(0, MAX_DESC_LEN)
+        : "",
+    code: code.slice(0, MAX_CODE_LEN),
     language: typeof r.language === "string" ? r.language : "text",
     tagsJson: JSON.stringify(sanitizeTags(r.tags)),
     favorite: r.favorite === true ? 1 : 0,
@@ -108,8 +120,27 @@ function normalizeIncoming(raw: unknown): {
 // Both sides converge to the union of records with the most recent edits.
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    // Reject oversized pushes before buffering/parsing. Trust the declared
+    // Content-Length for a fast early-out, then re-check the actual bytes (a
+    // client can lie about or omit the header) before touching JSON.parse.
+    const declared = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    }
+
+    const raw = await request.text();
+    if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    }
+
+    const body = JSON.parse(raw);
     const incoming: unknown[] = Array.isArray(body?.records) ? body.records : [];
+    if (incoming.length > MAX_RECORDS) {
+      return NextResponse.json(
+        { error: "Too many records in one sync" },
+        { status: 413 }
+      );
+    }
 
     const findStmt = db.prepare("SELECT updated_at FROM snippets WHERE uuid = ?");
     const insertStmt = db.prepare(`

@@ -6,12 +6,16 @@
 // store rows the web app would reject (and vice-versa). This module mirrors the
 // web rules so both runtimes persist identical, well-formed data.
 
-use crate::db::{CreateSnippetInput, Snippet, UpdateSnippetInput};
+use crate::db::{CreateSnippetInput, Snippet, SyncRecord, UpdateSnippetInput};
 use std::collections::HashSet;
 
 const MAX_TITLE_LEN: usize = 255;
 const MAX_MODEL_LEN: usize = 100;
 const MAX_TAGS: usize = 20;
+// Match the server's sync ingress caps (app/api/sync/route.ts) so both
+// directions bound the same fields to the same sizes.
+const MAX_CODE_LEN: usize = 500_000;
+const MAX_DESC_LEN: usize = 100_000;
 const TIMESTAMP_FMT: &str = "%Y-%m-%d %H:%M:%S";
 
 /// Languages accepted by the app. Kept in sync with lib/languages.ts.
@@ -115,4 +119,31 @@ pub fn sanitize_restore(mut s: Snippet) -> Result<Snippet, String> {
         .last_used_at
         .filter(|ts| chrono::NaiveDateTime::parse_from_str(ts, TIMESTAMP_FMT).is_ok());
     Ok(s)
+}
+
+/// Clamp an untrusted record received *from* the sync server before it's written
+/// to the local database. Mirrors the server's own ingress normalization
+/// (app/api/sync/route.ts `normalizeIncoming`) so a malicious or MITM'd server
+/// can't poison local rows with over-long fields or — the important one — a
+/// bogus `updated_at` that, under the string-compared newest-wins merge, would
+/// win forever and could never be overwritten by a legitimate later edit.
+///
+/// Unlike create/update this never *rejects* a record (sync must tolerate peers
+/// on newer app versions, e.g. unknown languages) — it only bounds values. An
+/// invalid timestamp falls back to "now", which still loses to any genuinely
+/// newer edit, so it degrades gracefully instead of pinning the row.
+pub fn sanitize_sync_record(mut r: SyncRecord) -> SyncRecord {
+    let now = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
+    r.title = truncate_chars(&r.title, MAX_TITLE_LEN);
+    r.description = truncate_chars(&r.description, MAX_DESC_LEN);
+    r.code = truncate_chars(&r.code, MAX_CODE_LEN);
+    r.model = truncate_chars(r.model.trim(), MAX_MODEL_LEN);
+    r.tags = normalize_tags(Some(r.tags));
+    r.copy_count = r.copy_count.clamp(0, i64::MAX - 1);
+    r.created_at = valid_timestamp_or(&r.created_at, &now);
+    r.updated_at = valid_timestamp_or(&r.updated_at, &now);
+    r.last_used_at = r
+        .last_used_at
+        .filter(|ts| chrono::NaiveDateTime::parse_from_str(ts, TIMESTAMP_FMT).is_ok());
+    r
 }

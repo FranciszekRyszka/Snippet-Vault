@@ -252,6 +252,14 @@ fn get_all_for_sync(state: State<Mutex<AppState>>) -> Result<Vec<SyncRecord>, St
 /// Returns how many local rows were inserted or updated.
 #[tauri::command]
 fn apply_sync_records(state: State<Mutex<AppState>>, records: Vec<SyncRecord>) -> Result<i64, String> {
+    // Clamp every record the server hands back before it touches the local DB,
+    // mirroring the server's own ingress normalization. A hostile/MITM'd server
+    // is otherwise trusted here, so this bounds field sizes and rejects bogus
+    // timestamps that would corrupt the newest-wins merge.
+    let records: Vec<SyncRecord> = records
+        .into_iter()
+        .map(validation::sanitize_sync_record)
+        .collect();
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
     db.apply_sync_records(records).map_err(|e| e.to_string())
