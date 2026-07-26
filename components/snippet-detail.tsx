@@ -28,6 +28,7 @@ type SnippetDetailProps = {
   onTagClick: (tag: string) => void;
   onModelClick: (model: string) => void;
   onCopied: (id: number) => void;
+  onExported: (snippet: Snippet, ok: boolean) => void;
 };
 
 function formatDateTime(value: string | null): string {
@@ -53,6 +54,7 @@ export function SnippetDetail({
   onTagClick,
   onModelClick,
   onCopied,
+  onExported,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
   const stats = getPromptStats(snippet.code);
@@ -202,7 +204,7 @@ export function SnippetDetail({
             Delete
           </button>
           <button
-            onClick={() => exportSnippet(snippet)}
+            onClick={() => onExported(snippet, exportSnippet(snippet))}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <Download className="h-4 w-4" />

@@ -67,8 +67,10 @@ export function SnippetsDashboard() {
   const [pendingUndo, setPendingUndo] = useState<Snippet | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [importNotice, setImportNotice] = useState<string | null>(null);
-  const importTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A transient info toast at the top of the page, used for import and export
+  // confirmations.
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Transient error toast for failed writes (delete/save/undo/favorite).
   const [actionError, setActionError] = useState<string | null>(null);
@@ -95,10 +97,10 @@ export function SnippetsDashboard() {
     errorTimer.current = setTimeout(() => setActionError(null), 5000);
   }, []);
 
-  const showImportNotice = useCallback((message: string) => {
-    setImportNotice(message);
-    if (importTimer.current) clearTimeout(importTimer.current);
-    importTimer.current = setTimeout(() => setImportNotice(null), 4000);
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 4000);
   }, []);
 
   // Restore the saved view preference (client-only to avoid hydration mismatch).
@@ -232,7 +234,7 @@ export function SnippetsDashboard() {
   // Clear any pending timers on unmount.
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    if (importTimer.current) clearTimeout(importTimer.current);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
     if (errorTimer.current) clearTimeout(errorTimer.current);
   }, []);
 
@@ -382,6 +384,21 @@ export function SnippetsDashboard() {
   const handleModelClick = (model: string) =>
     setActiveModel((prev) => (prev === model ? "" : model));
 
+  // Confirm a single-prompt export so the user knows the download happened. The
+  // file goes to the browser/OS downloads location, so there's no path to show —
+  // a short toast is the right feedback.
+  const handleExported = useCallback(
+    (snippet: Snippet, ok: boolean) => {
+      const noun = snippet.kind === "code" ? "snippet" : "prompt";
+      if (ok) {
+        showNotice(`Downloaded ${noun} "${snippet.title}".`);
+      } else {
+        showError(`Couldn't download "${snippet.title}".`);
+      }
+    },
+    [showNotice, showError]
+  );
+
   const handleImportClick = () => fileInputRef.current?.click();
 
   // Import prompts from a JSON file — either a single exported prompt (an object)
@@ -438,7 +455,7 @@ export function SnippetsDashboard() {
           skipped++;
         }
       }
-      showImportNotice(
+      showNotice(
         imported > 0
           ? `Imported ${imported} prompt${imported !== 1 ? "s" : ""}${
               skipped ? `, skipped ${skipped}` : ""
@@ -450,7 +467,7 @@ export function SnippetsDashboard() {
     } catch (err) {
       // Only reached if the file itself isn't valid JSON.
       console.error("Import failed:", err);
-      showImportNotice("Couldn't read that file — is it a valid JSON export?");
+      showNotice("Couldn't read that file — is it a valid JSON export?");
     } finally {
       await fetchSnippets();
       await fetchAllSnippets();
@@ -552,9 +569,9 @@ export function SnippetsDashboard() {
           />
         )}
 
-        {importNotice && (
+        {notice && (
           <div className="mb-4 rounded-lg border border-border bg-primary/10 px-4 py-2.5 text-sm text-primary">
-            {importNotice}
+            {notice}
           </div>
         )}
 
@@ -652,6 +669,7 @@ export function SnippetsDashboard() {
                   onToggleFavorite={handleToggleFavorite}
                   onOpen={(s) => setDetailId(s.id)}
                   onCopied={handleCopied}
+                  onExported={handleExported}
                 />
               ))}
             </div>
@@ -690,6 +708,7 @@ export function SnippetsDashboard() {
             setDetailId(null);
           }}
           onCopied={handleCopied}
+          onExported={handleExported}
         />
       )}
 

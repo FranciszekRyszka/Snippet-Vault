@@ -27,6 +27,7 @@ type SnippetCardProps = {
   onToggleFavorite: (id: number, favorite: boolean) => void;
   onOpen: (snippet: Snippet) => void;
   onCopied: (id: number) => void;
+  onExported: (snippet: Snippet, ok: boolean) => void;
 };
 
 // Build a filename-safe slug from a title for exports.
@@ -41,27 +42,35 @@ function slugify(title: string): string {
 
 // Export a single prompt as a JSON file. A Blob download works in both the
 // browser and the Tauri (WebView2) webview, so no filesystem plugin is needed.
-export function exportSnippet(snippet: Snippet) {
-  const data = {
-    title: snippet.title,
-    description: snippet.description,
-    code: snippet.code,
-    language: snippet.language,
-    tags: snippet.tags || [],
-    model: snippet.model || "",
-    kind: snippet.kind || "prompt",
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${slugify(snippet.title)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+// Returns whether the download was triggered so callers can confirm it to the
+// user (or report a failure).
+export function exportSnippet(snippet: Snippet): boolean {
+  try {
+    const data = {
+      title: snippet.title,
+      description: snippet.description,
+      code: snippet.code,
+      language: snippet.language,
+      tags: snippet.tags || [],
+      model: snippet.model || "",
+      kind: snippet.kind || "prompt",
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slugify(snippet.title)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    console.error("Export failed:", err);
+    return false;
+  }
 }
 
 export function SnippetCard({
@@ -74,6 +83,7 @@ export function SnippetCard({
   onToggleFavorite,
   onOpen,
   onCopied,
+  onExported,
 }: SnippetCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -128,7 +138,7 @@ export function SnippetCard({
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
       <button
-        onClick={() => exportSnippet(snippet)}
+        onClick={() => onExported(snippet, exportSnippet(snippet))}
         className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label="Export prompt"
       >

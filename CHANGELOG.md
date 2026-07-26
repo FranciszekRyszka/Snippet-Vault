@@ -15,6 +15,17 @@ ships.
 
 _Nothing yet._
 
+## [2.3.1] — 2026-07-26
+
+### Changed
+- The header's create button now reads **"New Prompt/Snippet"** (was "New
+  Prompt"), reflecting that entries can be either.
+
+### Added
+- **Download confirmation** when exporting a single prompt/snippet — a short
+  toast ("Downloaded prompt/snippet …") now appears so it's clear the file
+  saved, instead of exporting silently.
+
 ## [2.3.0] — 2026-07-26
 
 ### Added
@@ -123,7 +134,8 @@ _Nothing yet._
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.0...v2.2.1
