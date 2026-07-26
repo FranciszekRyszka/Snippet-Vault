@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The full column list, in the order `row_to_snippet` expects. Kept in one
-/// place so every SELECT stays in sync with the row mapper. `uuid` is appended
-/// last so the earlier indices stay stable.
+/// place so every SELECT stays in sync with the row mapper. New columns (`uuid`,
+/// then `kind`) are appended last so the earlier indices stay stable.
 const SNIPPET_COLUMNS: &str =
-    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid";
+    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind";
 
 /// Escape LIKE metacharacters so user input matches literally. Must be paired
 /// with an `ESCAPE '\'` clause on the LIKE. Without this, a search or tag value
@@ -28,10 +28,21 @@ pub struct Snippet {
     pub tags: Vec<String>,
     pub favorite: bool,
     pub model: String,
+    /// Entry kind: `"prompt"` (default) or `"code"`. Distinguishes a runnable
+    /// prompt from a plain code snippet — the UI hides the token estimate for
+    /// code, where it's meaningless.
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Serde default for `kind` on records that predate the column (e.g. an older
+/// sync peer that never sends it): treat them as prompts.
+fn default_kind() -> String {
+    "prompt".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +53,8 @@ pub struct CreateSnippetInput {
     pub language: String,
     pub tags: Option<Vec<String>>,
     pub model: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +65,8 @@ pub struct UpdateSnippetInput {
     pub language: String,
     pub tags: Option<Vec<String>>,
     pub model: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 /// One snippet as it travels to/from the sync server: the full record keyed by
@@ -67,6 +82,8 @@ pub struct SyncRecord {
     pub tags: Vec<String>,
     pub favorite: bool,
     pub model: String,
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -92,6 +109,11 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
         tags,
         favorite: favorite != 0,
         model: row.get(7)?,
+        // `kind` is the last column (index 13). Tolerate NULL on a not-yet-
+        // migrated row by falling back to "prompt".
+        kind: row
+            .get::<_, Option<String>>(13)?
+            .unwrap_or_else(|| "prompt".to_string()),
         // Read as i64, but fall back to a truncated REAL: SQLite's integer
         // arithmetic can overflow a copy_count into a float, and this column has
         // seen bad writes before. A defensive read keeps one odd row from
@@ -180,6 +202,15 @@ impl Database {
         }
         if !existing.contains("last_used_at") {
             conn.execute("ALTER TABLE snippets ADD COLUMN last_used_at TEXT", [])?;
+        }
+        // Entry kind: prompt (default) vs. code snippet. The DEFAULT backfills
+        // every existing row automatically, so no separate backfill pass is
+        // needed (unlike `uuid`).
+        if !existing.contains("kind") {
+            conn.execute(
+                "ALTER TABLE snippets ADD COLUMN kind TEXT NOT NULL DEFAULT 'prompt'",
+                [],
+            )?;
         }
 
         // Sync support: a stable cross-machine identity and a soft-delete
@@ -317,12 +348,13 @@ impl Database {
         let tags_json = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
         let description = input.description.unwrap_or_default();
         let model = input.model.unwrap_or_default();
+        let kind = input.kind.unwrap_or_else(default_kind);
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let uuid = uuid::Uuid::new_v4().to_string();
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![uuid, input.title, description, input.code, input.language, tags_json, model, now, now],
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, now, now],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -337,11 +369,12 @@ impl Database {
         let tags_json = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
         let description = input.description.unwrap_or_default();
         let model = input.model.unwrap_or_default();
+        let kind = input.kind.unwrap_or_else(default_kind);
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         let rows_affected = conn.execute(
-            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, updated_at = ? WHERE id = ?",
-            params![input.title, description, input.code, input.language, tags_json, model, now, id],
+            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = ? WHERE id = ?",
+            params![input.title, description, input.code, input.language, tags_json, model, kind, now, id],
         )?;
 
         drop(conn);
@@ -444,11 +477,11 @@ impl Database {
         };
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, copy_count, last_used_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 uuid, s.title, s.description, s.code, s.language, tags_json,
-                s.favorite as i64, s.model, s.copy_count, s.last_used_at, s.created_at, s.updated_at
+                s.favorite as i64, s.model, s.kind, s.copy_count, s.last_used_at, s.created_at, s.updated_at
             ],
         )?;
 
@@ -464,7 +497,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uuid, title, description, code, language, tags, favorite, model, \
-             copy_count, last_used_at, created_at, updated_at, deleted FROM snippets",
+             copy_count, last_used_at, created_at, updated_at, deleted, kind FROM snippets",
         )?;
         let iter = stmt.query_map([], |row| {
             let tags_json: String = row.get(5)?;
@@ -480,6 +513,9 @@ impl Database {
                 tags,
                 favorite: favorite != 0,
                 model: row.get(7)?,
+                kind: row
+                    .get::<_, Option<String>>(13)?
+                    .unwrap_or_else(|| "prompt".to_string()),
                 copy_count: row
                     .get::<_, i64>(8)
                     .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
@@ -520,11 +556,11 @@ impl Database {
             match existing {
                 None => {
                     tx.execute(
-                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, deleted)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, copy_count, last_used_at, created_at, updated_at, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         params![
                             rec.uuid, rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64
                         ],
                     )?;
@@ -532,10 +568,10 @@ impl Database {
                 }
                 Some(current) if rec.updated_at > current => {
                     tx.execute(
-                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
+                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
                         params![
                             rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64, rec.uuid
                         ],
                     )?;
@@ -592,6 +628,7 @@ mod sqli_tests {
             language: "text".into(),
             tags: Some(vec!["rust".into()]),
             model: None,
+            kind: None,
         }
     }
 
@@ -651,6 +688,7 @@ mod sqli_tests {
                 language: "text".into(),
                 tags: Some(vec!["'; DROP TABLE snippets; --".into()]),
                 model: Some("'); DROP TABLE snippets;--".into()),
+                kind: None,
             },
         )
         .unwrap();
@@ -668,6 +706,46 @@ mod sqli_tests {
         // Seed + all payload rows + target row all still present.
         let total = db.get_all_snippets(None, None, None, None).unwrap().len();
         assert_eq!(total, 1 + PAYLOADS.len() + 1);
+    }
+
+    #[test]
+    fn kind_defaults_to_prompt_and_round_trips() {
+        let db = temp_db();
+
+        // Omitted kind → defaults to "prompt".
+        let a = db.create_snippet(mk("plain", "body")).unwrap();
+        assert_eq!(a.kind, "prompt");
+
+        // Explicit "code" kind persists on create and reads back.
+        let mut code_input = mk("snippet", "let x = 1;");
+        code_input.kind = Some("code".into());
+        let b = db.create_snippet(code_input).unwrap();
+        assert_eq!(b.kind, "code");
+        assert_eq!(db.get_snippet(b.id).unwrap().unwrap().kind, "code");
+
+        // Update can switch kind (prompt → code) and it persists.
+        db.update_snippet(
+            a.id,
+            UpdateSnippetInput {
+                title: "plain".into(),
+                description: None,
+                code: "body".into(),
+                language: "text".into(),
+                tags: None,
+                model: None,
+                kind: Some("code".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(db.get_snippet(a.id).unwrap().unwrap().kind, "code");
+
+        // kind survives a sync round-trip (export → re-import into a fresh DB).
+        let records = db.get_all_for_sync().unwrap();
+        assert!(records.iter().any(|r| r.kind == "code"));
+        let db2 = temp_db();
+        db2.apply_sync_records(records).unwrap();
+        let synced = db2.get_all_snippets(None, None, None, None).unwrap();
+        assert!(synced.iter().any(|s| s.title == "snippet" && s.kind == "code"));
     }
 
     #[test]

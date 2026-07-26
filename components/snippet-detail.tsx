@@ -11,9 +11,10 @@ import {
   Star,
   Cpu,
   Hash,
+  Code,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
-import { getPromptStats, formatCount } from "@/lib/prompt-stats";
+import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { CodeBlock } from "./code-block";
 import { exportSnippet } from "./snippet-card";
 import type { Snippet } from "@/lib/tauri-api";
@@ -134,6 +135,12 @@ export function SnippetDetail({
 
         {/* Badges */}
         <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+          {snippet.kind === "code" && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              <Code className="h-3 w-3" />
+              Code snippet
+            </span>
+          )}
           <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             {getLanguageLabel(snippet.language)}
           </span>
@@ -169,7 +176,9 @@ export function SnippetDetail({
           <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Hash className="h-3 w-3" />
             {formatCount(stats.chars)} characters · {formatCount(stats.words)} words
-            · ~{formatCount(stats.tokens)} tokens
+            {showTokenEstimate(snippet.kind) && (
+              <> · ~{formatCount(stats.tokens)} tokens</>
+            )}
           </p>
         </div>
 

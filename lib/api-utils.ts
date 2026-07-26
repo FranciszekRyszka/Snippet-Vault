@@ -26,6 +26,13 @@ export function sanitizeModel(model: unknown): string {
   return typeof model === "string" ? model.trim().slice(0, 100) : "";
 }
 
+// Coerce an entry kind to the allowed set. Anything that isn't exactly "code"
+// (missing, unknown, non-string) becomes "prompt" — the safe default for a
+// prompt vault. Mirrors the desktop's normalize_kind; never throws.
+export function sanitizeKind(kind: unknown): "prompt" | "code" {
+  return typeof kind === "string" && kind.trim() === "code" ? "code" : "prompt";
+}
+
 // Parse a route `id` segment as a non-negative integer, or return null. Guards
 // against parseInt's lax coercion, where "1e2" -> 1 and "7abc" -> 7 would
 // otherwise target the wrong row.

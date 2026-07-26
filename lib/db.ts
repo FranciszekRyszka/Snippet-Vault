@@ -57,6 +57,9 @@ function getDb(): Database.Database {
   addColumn("model", "model TEXT NOT NULL DEFAULT ''");
   addColumn("copy_count", "copy_count INTEGER NOT NULL DEFAULT 0");
   addColumn("last_used_at", "last_used_at TEXT");
+  // Entry kind: 'prompt' (default) vs. 'code'. The DEFAULT backfills existing
+  // rows, so no separate backfill pass is needed (unlike `uuid`).
+  addColumn("kind", "kind TEXT NOT NULL DEFAULT 'prompt'");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -101,6 +104,7 @@ export type Snippet = {
   tags: string[];
   favorite: boolean;
   model: string;
+  kind: "prompt" | "code";
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -129,6 +133,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     tags: parseTags(row.tags),
     favorite: Boolean(row.favorite),
     model: (row.model as string) ?? "",
+    kind: row.kind === "code" ? "code" : "prompt",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

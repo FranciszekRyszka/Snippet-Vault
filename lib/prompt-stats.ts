@@ -25,3 +25,10 @@ export function getPromptStats(text: string): PromptStats {
 export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
 }
+
+// Whether to surface the ~token estimate for an entry. Tokens only matter for
+// prompts (fitting a context window); for a code snippet the count is
+// meaningless, so hide it. One source of truth for the form, card, and detail.
+export function showTokenEstimate(kind: string | undefined): boolean {
+  return kind !== "code";
+}

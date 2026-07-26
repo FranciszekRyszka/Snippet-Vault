@@ -62,6 +62,16 @@ fn normalize_model(model: Option<String>) -> String {
         .unwrap_or_default()
 }
 
+/// Coerce an entry kind to the allowed set. Anything that isn't exactly "code"
+/// (missing, empty, unknown value from a newer/hostile peer) becomes "prompt" —
+/// the safe default for a *prompt* vault. Never rejects.
+fn normalize_kind(kind: Option<String>) -> String {
+    match kind.as_deref().map(str::trim) {
+        Some("code") => "code".to_string(),
+        _ => "prompt".to_string(),
+    }
+}
+
 /// Return `ts` if it parses as our stored timestamp format, else `fallback`.
 fn valid_timestamp_or(ts: &str, fallback: &str) -> String {
     if chrono::NaiveDateTime::parse_from_str(ts, TIMESTAMP_FMT).is_ok() {
@@ -91,6 +101,7 @@ pub fn sanitize_create(mut input: CreateSnippetInput) -> Result<CreateSnippetInp
     validate_core(&input.title, &input.code, &input.language)?;
     input.tags = Some(normalize_tags(input.tags.take()));
     input.model = Some(normalize_model(input.model.take()));
+    input.kind = Some(normalize_kind(input.kind.take()));
     Ok(input)
 }
 
@@ -99,6 +110,7 @@ pub fn sanitize_update(mut input: UpdateSnippetInput) -> Result<UpdateSnippetInp
     validate_core(&input.title, &input.code, &input.language)?;
     input.tags = Some(normalize_tags(input.tags.take()));
     input.model = Some(normalize_model(input.model.take()));
+    input.kind = Some(normalize_kind(input.kind.take()));
     Ok(input)
 }
 
@@ -110,6 +122,7 @@ pub fn sanitize_restore(mut s: Snippet) -> Result<Snippet, String> {
     validate_core(&s.title, &s.code, &s.language)?;
     s.tags = normalize_tags(Some(s.tags));
     s.model = truncate_chars(s.model.trim(), MAX_MODEL_LEN);
+    s.kind = normalize_kind(Some(s.kind));
     s.copy_count = s.copy_count.clamp(0, i64::MAX - 1);
 
     let now = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
@@ -138,6 +151,7 @@ pub fn sanitize_sync_record(mut r: SyncRecord) -> SyncRecord {
     r.description = truncate_chars(&r.description, MAX_DESC_LEN);
     r.code = truncate_chars(&r.code, MAX_CODE_LEN);
     r.model = truncate_chars(r.model.trim(), MAX_MODEL_LEN);
+    r.kind = normalize_kind(Some(r.kind));
     r.tags = normalize_tags(Some(r.tags));
     r.copy_count = r.copy_count.clamp(0, i64::MAX - 1);
     r.created_at = valid_timestamp_or(&r.created_at, &now);

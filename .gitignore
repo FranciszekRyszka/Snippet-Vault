@@ -27,6 +27,8 @@ data/*.db-shm
 # Local notes / scratch
 ideas.md
 security.md
+plan.md
+implement.md
 
 # Ad-hoc log dumps pasted for debugging
 *.log

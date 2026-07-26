@@ -10,9 +10,10 @@ import {
   Star,
   Download,
   Cpu,
+  Code,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
-import { getPromptStats, formatCount } from "@/lib/prompt-stats";
+import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { CodeBlock } from "./code-block";
 import type { Snippet } from "@/lib/tauri-api";
 
@@ -48,6 +49,7 @@ export function exportSnippet(snippet: Snippet) {
     language: snippet.language,
     tags: snippet.tags || [],
     model: snippet.model || "",
+    kind: snippet.kind || "prompt",
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
@@ -170,17 +172,35 @@ export function SnippetCard({
     </button>
   ));
 
-  // Compact stats line: token estimate and (if used) copy count.
+  // Compact stats line: token estimate (prompts only) and (if used) copy count.
   const usageMeta = (
     <>
-      <span title={`${formatCount(stats.chars)} characters`}>
-        ~{formatCount(stats.tokens)} tok
-      </span>
+      {showTokenEstimate(snippet.kind) && (
+        <span title={`${formatCount(stats.chars)} characters`}>
+          ~{formatCount(stats.tokens)} tok
+        </span>
+      )}
       {snippet.copy_count > 0 && (
-        <span title="Times copied">· copied {formatCount(snippet.copy_count)}×</span>
+        <span title="Times copied">
+          {showTokenEstimate(snippet.kind) ? "· " : ""}copied{" "}
+          {formatCount(snippet.copy_count)}×
+        </span>
       )}
     </>
   );
+
+  // Small badge marking a code snippet (prompts are the implicit default, so
+  // they get no badge — keeps the common case uncluttered).
+  const kindBadge =
+    snippet.kind === "code" ? (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
+        title="Code snippet"
+      >
+        <Code className="h-3 w-3" />
+        Code
+      </span>
+    ) : null;
 
   // ---- List view: a compact row, no code preview; click to open. ----
   if (view === "list") {
@@ -195,6 +215,12 @@ export function SnippetCard({
             {snippet.title}
           </h3>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            {snippet.kind === "code" && (
+              <span className="inline-flex items-center gap-1 font-medium">
+                <Code className="h-3 w-3" />
+                Code
+              </span>
+            )}
             <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
               {getLanguageLabel(snippet.language)}
             </span>
@@ -247,6 +273,7 @@ export function SnippetCard({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {kindBadge}
           <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             {getLanguageLabel(snippet.language)}
           </span>

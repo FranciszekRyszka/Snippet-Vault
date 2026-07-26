@@ -30,6 +30,7 @@ import {
   isTauri,
   type Snippet,
   type CreateSnippetInput,
+  type SnippetKind,
 } from "@/lib/tauri-api";
 import { LANGUAGES } from "@/lib/languages";
 import { Cpu, Loader2, X } from "lucide-react";
@@ -280,6 +281,7 @@ export function SnippetsDashboard() {
     language: string;
     tags: string[];
     model: string;
+    kind: SnippetKind;
   }) => {
     setSaving(true);
     try {
@@ -426,6 +428,7 @@ export function SnippetsDashboard() {
             : [],
           model:
             typeof item.model === "string" ? item.model.trim().slice(0, 100) : "",
+          kind: item.kind === "code" ? "code" : "prompt",
         };
         try {
           await createSnippet(input);

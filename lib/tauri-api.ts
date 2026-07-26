@@ -1,3 +1,7 @@
+// Entry kind: a runnable prompt vs. a plain code snippet. Governs whether the
+// UI shows the (~token) estimate, which is meaningless for code.
+export type SnippetKind = "prompt" | "code";
+
 // Snippet type definition (shared between frontend and backend)
 export type Snippet = {
   id: number;
@@ -9,6 +13,7 @@ export type Snippet = {
   tags: string[];
   favorite: boolean;
   model: string;
+  kind: SnippetKind;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -22,6 +27,7 @@ export type CreateSnippetInput = {
   language: string;
   tags?: string[];
   model?: string;
+  kind?: SnippetKind;
 };
 
 export type UpdateSnippetInput = {
@@ -31,6 +37,7 @@ export type UpdateSnippetInput = {
   language: string;
   tags?: string[];
   model?: string;
+  kind?: SnippetKind;
 };
 
 // Check if running in Tauri.

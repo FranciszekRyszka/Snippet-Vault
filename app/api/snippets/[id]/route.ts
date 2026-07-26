@@ -1,7 +1,7 @@
 import { db, rowToSnippet } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
-import { parseId, sanitizeTags, sanitizeModel } from "@/lib/api-utils";
+import { parseId, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -16,7 +16,7 @@ export async function PUT(
   }
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model } = body;
+    const { title, description, code, language, tags, model, kind } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -41,10 +41,11 @@ export async function PUT(
 
     const sanitizedTags = sanitizeTags(tags);
     const sanitizedModel = sanitizeModel(model);
+    const sanitizedKind = sanitizeKind(kind);
 
     const stmt = db.prepare(`
       UPDATE snippets
-      SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, updated_at = datetime('now')
+      SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = datetime('now')
       WHERE id = ?
     `);
 
@@ -55,6 +56,7 @@ export async function PUT(
       language,
       JSON.stringify(sanitizedTags),
       sanitizedModel,
+      sanitizedKind,
       numericId
     );
 

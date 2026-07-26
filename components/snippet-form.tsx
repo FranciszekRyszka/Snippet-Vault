@@ -6,8 +6,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
 import { MODEL_SUGGESTIONS } from "@/lib/models";
-import { getPromptStats, formatCount } from "@/lib/prompt-stats";
-import type { Snippet } from "@/lib/tauri-api";
+import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
+import type { Snippet, SnippetKind } from "@/lib/tauri-api";
 
 type SnippetFormProps = {
   snippet?: Snippet | null;
@@ -18,6 +18,7 @@ type SnippetFormProps = {
     language: string;
     tags: string[];
     model: string;
+    kind: SnippetKind;
   }) => void;
   onCancel: () => void;
   saving: boolean;
@@ -36,6 +37,7 @@ export function SnippetForm({
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("text");
   const [model, setModel] = useState("");
+  const [kind, setKind] = useState<SnippetKind>("prompt");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -60,6 +62,7 @@ export function SnippetForm({
       setCode(snippet.code);
       setLanguage(snippet.language);
       setModel(snippet.model || "");
+      setKind(snippet.kind || "prompt");
       setTags(snippet.tags || []);
     } else {
       setTitle("");
@@ -67,6 +70,7 @@ export function SnippetForm({
       setCode("");
       setLanguage("text");
       setModel("");
+      setKind("prompt");
       setTags([]);
     }
     setTagInput("");
@@ -143,18 +147,23 @@ export function SnippetForm({
       language,
       tags: finalTags,
       model: model.trim(),
+      kind,
     });
   };
 
   const isEditing = !!snippet;
   const stats = getPromptStats(code);
+  // Wording follows the chosen kind so the form doesn't call a code snippet a
+  // "prompt", and the ~token estimate is prompt-only.
+  const noun = kind === "code" ? "Snippet" : "Prompt";
+  const showTokens = showTokenEstimate(kind);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/20 backdrop-blur-sm pt-12 pb-12">
       <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-lg mx-4">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">
-            {isEditing ? "Edit Prompt" : "New Prompt"}
+            {isEditing ? `Edit ${noun}` : `New ${noun}`}
           </h2>
           <button
             onClick={onCancel}
@@ -166,6 +175,34 @@ export function SnippetForm({
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-foreground">
+              Type
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="Entry type"
+              className="inline-flex rounded-lg border border-input bg-background p-0.5"
+            >
+              {(["prompt", "code"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === k}
+                  onClick={() => setKind(k)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    kind === k
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {k === "code" ? "Code snippet" : "Prompt"}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label
               htmlFor="snippet-title"
@@ -348,12 +385,13 @@ export function SnippetForm({
                 htmlFor="snippet-code"
                 className="block text-sm font-medium text-foreground"
               >
-                Prompt <span className="text-destructive">*</span>
+                {kind === "code" ? "Code" : "Prompt"}{" "}
+                <span className="text-destructive">*</span>
               </label>
               {code.length > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {formatCount(stats.chars)} characters · ~
-                  {formatCount(stats.tokens)} tokens
+                  {formatCount(stats.chars)} characters
+                  {showTokens && <> · ~{formatCount(stats.tokens)} tokens</>}
                 </span>
               )}
             </div>
@@ -361,7 +399,11 @@ export function SnippetForm({
               id="snippet-code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Write or paste your prompt here..."
+              placeholder={
+                kind === "code"
+                  ? "Write or paste your code snippet here..."
+                  : "Write or paste your prompt here..."
+              }
               required
               rows={12}
               className="w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -384,8 +426,8 @@ export function SnippetForm({
               {saving
                 ? "Saving..."
                 : isEditing
-                  ? "Update Prompt"
-                  : "Save Prompt"}
+                  ? `Update ${noun}`
+                  : `Save ${noun}`}
             </button>
           </div>
         </form>
