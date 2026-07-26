@@ -65,7 +65,67 @@ function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
+// A minimal landing page for the root URL of a token-protected sync server.
+// The browser web UI can't authenticate against such a server (there's no place
+// to enter the token — it's a desktop-only setting), so the real app would just
+// render a dead shell whose every API call 401s. Serve this instead so a visitor
+// sees what the endpoint is rather than a broken interface. Self-contained (no
+// external assets), theme-aware.
+function serverStatusPage() {
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>SnipVault sync server</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #fafafa; color: #18181b; padding: 24px; }
+  .card { max-width: 34rem; text-align: center; }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+  p { margin: .5rem 0; color: #52525b; }
+  code { background: rgba(127,127,127,.15); padding: .1em .4em; border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+  a { color: #2563eb; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #09090b; color: #fafafa; }
+    p { color: #a1a1aa; }
+    a { color: #60a5fa; }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>SnipVault sync server</h1>
+    <p>This is the sync API for the SnipVault desktop app — there is no web
+    interface here. Point the desktop app's <strong>Settings → Sync server</strong>
+    at this URL with your access token.</p>
+    <p>Health check: <code>GET /api/health</code></p>
+    <p><a href="https://github.com/FranciszekRyszka/Snippet-Vault">Documentation &amp; downloads</a></p>
+  </div>
+</body>
+</html>`;
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 export function proxy(request: NextRequest) {
+  // The root page. On a token-protected server (a pure sync server) the browser
+  // UI can't authenticate, so replace it with a small status page. When no token
+  // is set — local dev, or an operator running an intentionally open web app via
+  // SNIPVAULT_ALLOW_NO_AUTH — serve the real app untouched.
+  if (request.nextUrl.pathname === "/") {
+    return TOKEN ? serverStatusPage() : NextResponse.next();
+  }
+
   // Misconfigured production server (no token, no opt-in): fail closed.
   if (LOCKED_OUT) {
     return NextResponse.json(
@@ -88,7 +148,8 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Guard only the API surface; static assets and pages are untouched.
+// Guard the API surface, plus the root page (swapped for a status page on a
+// token-protected server). Other static assets and pages are untouched.
 export const config = {
-  matcher: "/api/:path*",
+  matcher: ["/api/:path*", "/"],
 };

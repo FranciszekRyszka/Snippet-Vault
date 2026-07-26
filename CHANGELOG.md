@@ -13,7 +13,14 @@ ships.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+- **Sync server:** the root URL now serves a small **status page** instead of
+  the full web UI when a `SNIPVAULT_TOKEN` is set. On a token-protected server
+  the browser UI can't authenticate (there's no place to enter the token), so it
+  would only render a dead shell; the status page makes the endpoint's purpose
+  clear. Servers run without a token (local dev, or an intentionally open web
+  app via `SNIPVAULT_ALLOW_NO_AUTH=1`) still serve the full app. Server-only
+  change; the desktop app is unaffected.
 
 ## [2.3.1] — 2026-07-26
 

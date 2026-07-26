@@ -50,6 +50,12 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://192.168.1.50:3000/api/health
 # -> {"ok":true,"count":0}
 ```
 
+A token-protected server has **no browser interface** — opening its URL shows a
+short status page, not the app. That's expected: the token can only be entered in
+the desktop app's **Settings → Sync server**, so the server is a sync API, not a
+web app. (Running without a token — an intentionally open server via
+`SNIPVAULT_ALLOW_NO_AUTH=1` — does serve the full web UI in a browser.)
+
 Update to a newer version later:
 
 ```bash
