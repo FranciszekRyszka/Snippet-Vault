@@ -13,7 +13,13 @@ ships.
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-08-06
+
 ### Changed
+- The **download/export confirmation** ("Downloaded prompt/snippet …") now
+  appears as a rounded popup **pinned to the bottom-center of the screen**,
+  instead of an inline banner at the top of the page. Import confirmations use
+  the same bottom popup.
 - **Sync server:** the root URL now serves a small **status page** instead of
   the full web UI when a `SNIPVAULT_TOKEN` is set. On a token-protected server
   the browser UI can't authenticate (there's no place to enter the token), so it
@@ -141,7 +147,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.1...v2.2.2

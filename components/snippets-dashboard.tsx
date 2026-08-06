@@ -67,8 +67,8 @@ export function SnippetsDashboard() {
   const [pendingUndo, setPendingUndo] = useState<Snippet | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // A transient info toast at the top of the page, used for import and export
-  // confirmations.
+  // A transient info toast pinned to the bottom-center of the screen, used for
+  // import and export/download confirmations.
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -569,12 +569,6 @@ export function SnippetsDashboard() {
           />
         )}
 
-        {notice && (
-          <div className="mb-4 rounded-lg border border-border bg-primary/10 px-4 py-2.5 text-sm text-primary">
-            {notice}
-          </div>
-        )}
-
         <div className="mb-6">
           <SearchBar
             search={search}
@@ -729,8 +723,21 @@ export function SnippetsDashboard() {
         </div>
       )}
 
+      {notice && (
+        <div className="fixed bottom-20 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-full border border-border bg-card px-5 py-2.5 text-sm text-foreground shadow-lg">
+          <span className="truncate">{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {actionError && (
-        <div className="fixed bottom-20 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+        <div className="fixed bottom-36 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
