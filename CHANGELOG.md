@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-08-07
+
+### Changed
+- **Download/import toasts** are easier to spot and no longer clobber each
+  other:
+  - They now use a **distinct solid color** (emerald for confirmations, rose for
+    errors) instead of blending into the app's card/background.
+  - The download confirmation now says **where the file went** — "…to your
+    Downloads folder (filename.json)".
+  - Toasts **stack up to three** (newest at the bottom); exporting several
+    prompts in a row shows each one, and a fourth evicts the oldest.
+
 ## [2.3.2] — 2026-08-06
 
 ### Changed
@@ -147,7 +159,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.2.2...v2.3.0

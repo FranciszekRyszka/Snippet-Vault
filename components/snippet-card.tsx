@@ -27,7 +27,7 @@ type SnippetCardProps = {
   onToggleFavorite: (id: number, favorite: boolean) => void;
   onOpen: (snippet: Snippet) => void;
   onCopied: (id: number) => void;
-  onExported: (snippet: Snippet, ok: boolean) => void;
+  onExported: (snippet: Snippet, filename: string | null) => void;
 };
 
 // Build a filename-safe slug from a title for exports.
@@ -42,9 +42,9 @@ function slugify(title: string): string {
 
 // Export a single prompt as a JSON file. A Blob download works in both the
 // browser and the Tauri (WebView2) webview, so no filesystem plugin is needed.
-// Returns whether the download was triggered so callers can confirm it to the
-// user (or report a failure).
-export function exportSnippet(snippet: Snippet): boolean {
+// Returns the download filename on success (so callers can confirm *what* was
+// saved and where), or null on failure.
+export function exportSnippet(snippet: Snippet): string | null {
   try {
     const data = {
       title: snippet.title,
@@ -59,17 +59,18 @@ export function exportSnippet(snippet: Snippet): boolean {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
+    const filename = `${slugify(snippet.title)}.json`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${slugify(snippet.title)}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    return true;
+    return filename;
   } catch (err) {
     console.error("Export failed:", err);
-    return false;
+    return null;
   }
 }
 

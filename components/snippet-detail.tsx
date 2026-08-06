@@ -28,7 +28,7 @@ type SnippetDetailProps = {
   onTagClick: (tag: string) => void;
   onModelClick: (model: string) => void;
   onCopied: (id: number) => void;
-  onExported: (snippet: Snippet, ok: boolean) => void;
+  onExported: (snippet: Snippet, filename: string | null) => void;
 };
 
 function formatDateTime(value: string | null): string {

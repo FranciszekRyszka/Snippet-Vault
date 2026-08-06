@@ -35,6 +35,11 @@ import {
 import { LANGUAGES } from "@/lib/languages";
 import { Cpu, Loader2, X } from "lucide-react";
 
+// Bottom-center toast stack: newest at the bottom, capped so a burst of exports
+// doesn't cover the screen. Beyond the cap the oldest toast is evicted.
+type Toast = { id: number; message: string; type: "info" | "error" };
+const MAX_TOASTS = 3;
+
 export function SnippetsDashboard() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [allSnippets, setAllSnippets] = useState<Snippet[]>([]);
@@ -67,14 +72,16 @@ export function SnippetsDashboard() {
   const [pendingUndo, setPendingUndo] = useState<Snippet | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // A transient info toast pinned to the bottom-center of the screen, used for
-  // import and export/download confirmations.
-  const [notice, setNotice] = useState<string | null>(null);
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Transient error toast for failed writes (delete/save/undo/favorite).
-  const [actionError, setActionError] = useState<string | null>(null);
-  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Transient toasts pinned to the bottom-center of the screen. Downloads and
+  // imports push an "info" toast; failed writes push an "error" toast. They
+  // stack (newest at the bottom) up to MAX_TOASTS — when another arrives the
+  // oldest is evicted — so exporting several prompts in a row shows each
+  // confirmation instead of one message clobbering the last.
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastSeq = useRef(0);
+  const toastTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
 
   // Monotonic fetch counter so a slow, stale response can't overwrite a newer one.
   const fetchSeq = useRef(0);
@@ -91,17 +98,47 @@ export function SnippetsDashboard() {
   // dbReady change.
   const didStartupSync = useRef(false);
 
-  const showError = useCallback((message: string) => {
-    setActionError(message);
-    if (errorTimer.current) clearTimeout(errorTimer.current);
-    errorTimer.current = setTimeout(() => setActionError(null), 5000);
+  const dismissToast = useCallback((id: number) => {
+    const timer = toastTimers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showNotice = useCallback((message: string) => {
-    setNotice(message);
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), 4000);
-  }, []);
+  const pushToast = useCallback(
+    (message: string, type: "info" | "error", ms: number) => {
+      const id = ++toastSeq.current;
+      setToasts((prev) => {
+        const next = [...prev, { id, message, type }];
+        // Cap the stack: drop the oldest (and cancel its timer) past the limit.
+        while (next.length > MAX_TOASTS) {
+          const dropped = next.shift()!;
+          const timer = toastTimers.current.get(dropped.id);
+          if (timer) {
+            clearTimeout(timer);
+            toastTimers.current.delete(dropped.id);
+          }
+        }
+        return next;
+      });
+      toastTimers.current.set(
+        id,
+        setTimeout(() => dismissToast(id), ms)
+      );
+    },
+    [dismissToast]
+  );
+
+  const showNotice = useCallback(
+    (message: string) => pushToast(message, "info", 4000),
+    [pushToast]
+  );
+  const showError = useCallback(
+    (message: string) => pushToast(message, "error", 5000),
+    [pushToast]
+  );
 
   // Restore the saved view preference (client-only to avoid hydration mismatch).
   useEffect(() => {
@@ -232,10 +269,12 @@ export function SnippetsDashboard() {
   }, [dbReady, fetchSnippets, fetchAllSnippets]);
 
   // Clear any pending timers on unmount.
-  useEffect(() => () => {
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    if (errorTimer.current) clearTimeout(errorTimer.current);
+  useEffect(() => {
+    const timers = toastTimers.current;
+    return () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      for (const timer of timers.values()) clearTimeout(timer);
+    };
   }, []);
 
   // Collect all unique tags from all snippets for the tag cloud
@@ -384,16 +423,23 @@ export function SnippetsDashboard() {
   const handleModelClick = (model: string) =>
     setActiveModel((prev) => (prev === model ? "" : model));
 
-  // Confirm a single-prompt export so the user knows the download happened. The
-  // file goes to the browser/OS downloads location, so there's no path to show —
-  // a short toast is the right feedback.
+  // Confirm a single-prompt export so the user knows the download happened and
+  // where it landed. The Blob download goes to the browser/OS Downloads folder
+  // (its absolute path isn't exposed to JS), and we surface the filename that
+  // was written.
   const handleExported = useCallback(
-    (snippet: Snippet, ok: boolean) => {
+    (snippet: Snippet, filename: string | null) => {
       const noun = snippet.kind === "code" ? "snippet" : "prompt";
-      if (ok) {
-        showNotice(`Downloaded ${noun} "${snippet.title}".`);
+      const title =
+        snippet.title.length > 44
+          ? snippet.title.slice(0, 43) + "…"
+          : snippet.title;
+      if (filename) {
+        showNotice(
+          `Downloaded ${noun} "${title}" to your Downloads folder (${filename}).`
+        );
       } else {
-        showError(`Couldn't download "${snippet.title}".`);
+        showError(`Couldn't download "${title}".`);
       }
     },
     [showNotice, showError]
@@ -467,7 +513,7 @@ export function SnippetsDashboard() {
     } catch (err) {
       // Only reached if the file itself isn't valid JSON.
       console.error("Import failed:", err);
-      showNotice("Couldn't read that file — is it a valid JSON export?");
+      showError("Couldn't read that file — is it a valid JSON export?");
     } finally {
       await fetchSnippets();
       await fetchAllSnippets();
@@ -723,29 +769,25 @@ export function SnippetsDashboard() {
         </div>
       )}
 
-      {notice && (
-        <div className="fixed bottom-20 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-full border border-border bg-card px-5 py-2.5 text-sm text-foreground shadow-lg">
-          <span className="truncate">{notice}</span>
-          <button
-            onClick={() => setNotice(null)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      {actionError && (
-        <div className="fixed bottom-36 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
-          <span>{actionError}</span>
-          <button
-            onClick={() => setActionError(null)}
-            className="text-destructive/70 transition-colors hover:text-destructive"
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+      {toasts.length > 0 && (
+        <div className="pointer-events-none fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              className={`pointer-events-auto flex max-w-[90vw] items-center gap-3 rounded-2xl px-5 py-2.5 text-sm font-medium text-white shadow-lg ${
+                t.type === "error" ? "bg-rose-600" : "bg-emerald-600"
+              }`}
+            >
+              <span className="min-w-0 break-words">{t.message}</span>
+              <button
+                onClick={() => dismissToast(t.id)}
+                className="shrink-0 text-white/70 transition-colors hover:text-white"
+                aria-label="Dismiss"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
