@@ -12,11 +12,17 @@ import {
   Server,
   Plug,
   Unplug,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 import {
   getDatabasePath,
   useExistingDb,
   backupDatabase,
+  getBackupsDir,
+  backupToFolder,
+  restoreFromBackup,
+  openBackupsDir,
   getSyncServer,
   saveSyncServer,
   removeSyncServer,
@@ -42,7 +48,10 @@ type SettingsDialogProps = {
 // to a different database file, and back up the current one.
 export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   const [dbPath, setDbPath] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"change" | "backup" | null>(null);
+  const [backupsDir, setBackupsDir] = useState<string | null>(null);
+  const [busy, setBusy] = useState<
+    "change" | "backup" | "folder-backup" | "restore" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -68,6 +77,7 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
 
   useEffect(() => {
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
+    getBackupsDir().then(setBackupsDir).catch(() => setBackupsDir(null));
     getAppVersion().then(setVersion).catch(() => setVersion(""));
     setAutoCheck(isAutoUpdateEnabled());
     getSyncServer()
@@ -244,6 +254,63 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
     }
   };
 
+  // Write a timestamped snapshot into the managed backups folder (what external
+  // backup tools watch). Keeps the newest few; older ones are pruned in Rust.
+  const handleFolderBackup = async () => {
+    setError(null);
+    setNotice(null);
+    setBusy("folder-backup");
+    try {
+      const path = await backupToFolder();
+      setNotice(`Snapshot saved to ${path}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleOpenBackups = async () => {
+    setError(null);
+    try {
+      await openBackupsDir();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Restore the whole library from a backup file, replacing the current one.
+  // Rust validates the file is a SnipVault database before anything changes.
+  const handleRestore = async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "Restore from a backup",
+        defaultPath: backupsDir ?? undefined,
+        filters: [
+          { name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] },
+        ],
+      });
+      if (typeof selected !== "string") return;
+      const ok = window.confirm(
+        "Restore from this backup? It will replace your current library with the contents of the backup. This can't be undone."
+      );
+      if (!ok) return;
+      setBusy("restore");
+      await restoreFromBackup(selected);
+      setNotice("Library restored from backup.");
+      onDbChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-lg">
@@ -405,6 +472,58 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               {error}
             </p>
           )}
+
+          <div className="border-t border-border pt-5">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Backups folder
+            </label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Timestamped snapshots of your whole database, written consistently
+              even while the app is running. Point an external backup tool
+              (Databasus, restic, Time Machine, a cloud-sync folder…) at this
+              folder — the newest snapshots are kept and older ones pruned.
+            </p>
+            <p className="break-all rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground">
+              {backupsDir ?? "Loading…"}
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleFolderBackup}
+                disabled={busy !== null}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {busy === "folder-backup" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Archive className="h-4 w-4" />
+                )}
+                Back up now
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenBackups}
+                disabled={busy !== null}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <FolderOpen className="h-4 w-4" />
+                Open folder
+              </button>
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={busy !== null}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                {busy === "restore" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                Restore…
+              </button>
+            </div>
+          </div>
 
           <div className="border-t border-border pt-5">
             <div className="mb-1.5 flex items-center justify-between">

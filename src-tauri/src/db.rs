@@ -16,6 +16,41 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
+/// Whether the file at `path` looks like a SnipVault database: it opens as
+/// SQLite and has a `snippets` table carrying the key columns we rely on. Used
+/// to guard "restore from backup" so we never overwrite the live library with an
+/// unrelated or corrupt file. Opens read-only and never mutates anything.
+pub fn looks_like_snipvault_db(path: &Path) -> bool {
+    use rusqlite::OpenFlags;
+    let Ok(conn) = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) else {
+        return false;
+    };
+    let has_table = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snippets'",
+            [],
+            |_| Ok(()),
+        )
+        .optional()
+        .unwrap_or(None)
+        .is_some();
+    if !has_table {
+        return false;
+    }
+    // The snippets table must carry the columns the app depends on.
+    let mut cols = std::collections::HashSet::new();
+    if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(snippets)") {
+        if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(1)) {
+            for c in rows.flatten() {
+                cols.insert(c);
+            }
+        }
+    }
+    ["title", "code", "language", "uuid", "deleted"]
+        .iter()
+        .all(|c| cols.contains(*c))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snippet {
     pub id: i64,
@@ -257,6 +292,21 @@ impl Database {
     pub fn backup_to(&self, dest: &Path) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.backup(DatabaseName::Main, dest, None)?;
+        Ok(())
+    }
+
+    /// Replace this database's contents with those of the SQLite file at `src`,
+    /// using SQLite's online restore API — the live connection stays open and
+    /// its pages are overwritten atomically, so open handles keep working and
+    /// WAL is handled correctly. Validate `src` with `looks_like_snipvault_db`
+    /// before calling this.
+    pub fn restore_from(&self, src: &Path) -> Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        conn.restore(
+            DatabaseName::Main,
+            src,
+            None::<fn(rusqlite::backup::Progress)>,
+        )?;
         Ok(())
     }
 
@@ -824,5 +874,39 @@ mod sqli_tests {
         assert_eq!(fallback.len(), 3);
         assert_eq!(fallback[0].title, "cherry", "pin still leads on fallback");
         let _ = a;
+    }
+
+    #[test]
+    fn backup_validates_and_restores_the_whole_db() {
+        let src = temp_db();
+        src.create_snippet(mk("survivor", "payload")).unwrap();
+
+        // Consistent snapshot to a file.
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dest = std::env::temp_dir().join(format!("snipvault_bk_{n}.db"));
+        src.backup_to(&dest).unwrap();
+
+        // The snapshot is recognised as a SnipVault database...
+        assert!(looks_like_snipvault_db(&dest));
+        // ...while an unrelated file is not (guards restore from clobbering data).
+        let junk = std::env::temp_dir().join(format!("snipvault_junk_{n}.txt"));
+        std::fs::write(&junk, b"definitely not a database").unwrap();
+        assert!(!looks_like_snipvault_db(&junk));
+
+        // Restore into a fresh, empty database — the row comes back.
+        let target = temp_db();
+        assert_eq!(
+            target.get_all_snippets(None, None, None, None, None).unwrap().len(),
+            0
+        );
+        target.restore_from(&dest).unwrap();
+        let rows = target.get_all_snippets(None, None, None, None, None).unwrap();
+        assert!(rows.iter().any(|s| s.title == "survivor"), "restore lost the row");
+
+        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(&junk);
     }
 }

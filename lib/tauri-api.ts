@@ -401,3 +401,26 @@ export async function getDatabasePath(): Promise<string | null> {
 export async function backupDatabase(destination: string): Promise<string> {
   return invoke<string>("backup_database", { destination });
 }
+
+// The managed backups folder (created if missing) — where "Back up now" writes
+// timestamped snapshots an external backup tool can watch.
+export async function getBackupsDir(): Promise<string> {
+  return invoke<string>("get_backups_dir");
+}
+
+// Write a timestamped, consistent snapshot into the managed backups folder,
+// pruning to the newest `keep` (default handled in Rust). Returns the path.
+export async function backupToFolder(keep?: number): Promise<string> {
+  return invoke<string>("backup_to_folder", { keep: keep ?? null });
+}
+
+// Restore the whole database from a backup file, replacing the current library.
+// The file is validated as a SnipVault database in Rust before anything changes.
+export async function restoreFromBackup(path: string): Promise<void> {
+  await invoke("restore_from_backup", { path });
+}
+
+// Open the managed backups folder in the OS file manager.
+export async function openBackupsDir(): Promise<void> {
+  await invoke("open_backups_dir");
+}

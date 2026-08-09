@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **Whole-database backup & restore (desktop).** Settings now has a **Backups
+  folder** — a stable, documented location holding timestamped snapshots of your
+  entire database, each written with SQLite's online backup API so it's a
+  consistent copy even while the app is running (never a torn mid-write file).
+  Point an external backup tool (Databasus, restic, Time Machine, a cloud-sync
+  folder, cron…) at that folder. **Back up now** writes a snapshot (the newest
+  are kept, older ones pruned), **Open folder** reveals it in the file manager,
+  and **Restore…** replaces your current library from a chosen backup — the file
+  is validated as a SnipVault database first, so an unrelated or corrupt file
+  can't clobber your data.
+
 ### Security
 - **Sync token moved to the OS credential store.** On the desktop the sync
   server's access token is now kept in the operating system's secure store

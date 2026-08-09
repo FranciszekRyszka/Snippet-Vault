@@ -143,6 +143,120 @@ fn backup_database(state: State<Mutex<AppState>>, destination: String) -> Result
     Ok(destination)
 }
 
+// ---- Whole-database backup to a managed folder ----------------------------
+//
+// A stable, documented folder (`<app data>/snipvault/backups/`) that holds
+// timestamped, consistent copies of the whole database — the kind external
+// backup tools (Databasus, restic, Time Machine, a cloud-sync folder, cron) can
+// safely watch. Each snapshot goes through SQLite's online backup API, so it's
+// never a torn mid-write copy even in WAL mode.
+
+fn backups_dir() -> PathBuf {
+    app_dir().join("backups")
+}
+
+/// A filesystem-friendly local timestamp, e.g. `20260809-181245`. Sorts
+/// lexically in chronological order, which the pruning below relies on.
+fn backup_timestamp() -> String {
+    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
+}
+
+/// Keep only the newest `keep` snapshots in `dir`, deleting older ones. Names
+/// sort chronologically, so ascending order puts the oldest first.
+fn prune_backups(dir: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("snipvault-") && n.ends_with(".db"))
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    if files.len() > keep {
+        let excess = files.len() - keep;
+        for old in files.into_iter().take(excess) {
+            let _ = std::fs::remove_file(old);
+        }
+    }
+}
+
+/// The managed backups folder path (created if missing) — shown in Settings so
+/// the user knows where to point an external backup tool.
+#[tauri::command]
+fn get_backups_dir() -> Result<String, String> {
+    let dir = backups_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Write a timestamped, consistent snapshot of the whole database into the
+/// managed backups folder, then prune to the newest `keep` (default 10).
+/// Returns the path written.
+#[tauri::command]
+fn backup_to_folder(state: State<Mutex<AppState>>, keep: Option<u32>) -> Result<String, String> {
+    let s = state.lock().map_err(|e| e.to_string())?;
+    let db = s.db.as_ref().ok_or("Database not initialized")?;
+    let dir = backups_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = dir.join(format!("snipvault-{}.db", backup_timestamp()));
+    db.backup_to(&dest).map_err(|e| e.to_string())?;
+    prune_backups(&dir, keep.unwrap_or(10).max(1) as usize);
+    Ok(dest.to_string_lossy().into_owned())
+}
+
+/// Restore the whole database from a backup file, replacing the current
+/// library. The file is validated as a SnipVault database first, so an
+/// unrelated or corrupt file can't clobber the live data. Uses SQLite's online
+/// restore API, so open connections keep working.
+#[tauri::command]
+fn restore_from_backup(state: State<Mutex<AppState>>, path: String) -> Result<(), String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err(format!("File does not exist: {path}"));
+    }
+    if !db::looks_like_snipvault_db(&src) {
+        return Err(
+            "That file doesn't look like a SnipVault database — restore cancelled.".to_string(),
+        );
+    }
+    let s = state.lock().map_err(|e| e.to_string())?;
+    let db = s.db.as_ref().ok_or("Database not initialized")?;
+    // Don't restore the live file onto itself.
+    let same_file = match (src.canonicalize(), db.path().canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => src == db.path(),
+    };
+    if same_file {
+        return Err("That's the current database, not a backup.".to_string());
+    }
+    db.restore_from(&src).map_err(|e| e.to_string())
+}
+
+/// Open the managed backups folder in the OS file manager, so the user can grab
+/// a snapshot or point a backup tool at it.
+#[tauri::command]
+fn open_backups_dir() -> Result<(), String> {
+    let dir = backups_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "linux")]
+    let program = "xdg-open";
+    std::process::Command::new(program)
+        .arg(dir.as_os_str())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 // ---- Sync server (remote) configuration -----------------------------------
 
 // The sync token is a secret, so it's kept in the OS credential store (Windows
@@ -397,6 +511,10 @@ pub fn run() {
             use_existing_db,
             get_database_path,
             backup_database,
+            get_backups_dir,
+            backup_to_folder,
+            restore_from_backup,
+            open_backups_dir,
             get_remote_config,
             set_remote_config,
             clear_remote_config,
