@@ -13,6 +13,8 @@ ships.
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-08-09
+
 ### Added
 - **Whole-database backup & restore (desktop).** Settings now has a **Backups
   folder** — a stable, documented location holding timestamped snapshots of your
@@ -246,7 +248,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...v2.4.0
 [2.3.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...v2.3.3
