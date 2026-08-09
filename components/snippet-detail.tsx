@@ -19,12 +19,13 @@ import {
   Loader2,
   ChevronDown,
   FileCode2,
+  FileDown,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
-import { exportSnippet } from "./snippet-card";
+import { exportSnippet, exportSnippetMarkdown } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { DiffBlock } from "./diff-block";
 import { diffLines, diffStats } from "@/lib/diff";
@@ -455,7 +456,16 @@ export function SnippetDetail({
             {copiedMd ? "Copied" : "Markdown"}
           </button>
           <button
+            onClick={() => onExported(snippet, exportSnippetMarkdown(snippet))}
+            title="Download as a Markdown (.md) file"
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <FileDown className="h-4 w-4" />
+            .md
+          </button>
+          <button
             onClick={() => onExported(snippet, exportSnippet(snippet))}
+            title="Export as a JSON file"
             className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <Download className="h-4 w-4" />

@@ -19,6 +19,12 @@ import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-sta
 import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { FillVarsDialog } from "./fill-vars-dialog";
+import { toMarkdown } from "@/lib/to-markdown";
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from "./ui/hover-card";
 import type { Snippet } from "@/lib/tauri-api";
 
 type SnippetCardProps = {
@@ -33,6 +39,8 @@ type SnippetCardProps = {
   onCopied: (id: number) => void;
   onExported: (snippet: Snippet, filename: string | null) => void;
   onDuplicate: (snippet: Snippet) => void;
+  // Highlighted by keyboard navigation (j/k) — draws a focus ring.
+  focused?: boolean;
 };
 
 // Build a filename-safe slug from a title for exports.
@@ -79,6 +87,30 @@ export function exportSnippet(snippet: Snippet): string | null {
   }
 }
 
+// Export a single prompt as a Markdown (.md) file. Like exportSnippet, works in
+// both the browser and the Tauri webview via a Blob download. Returns the
+// download filename on success, or null on failure.
+export function exportSnippetMarkdown(snippet: Snippet): string | null {
+  try {
+    const blob = new Blob([toMarkdown(snippet)], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const filename = `${slugify(snippet.title)}.md`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return filename;
+  } catch (err) {
+    console.error("Markdown export failed:", err);
+    return null;
+  }
+}
+
 export function SnippetCard({
   snippet,
   view,
@@ -91,7 +123,11 @@ export function SnippetCard({
   onCopied,
   onExported,
   onDuplicate,
+  focused = false,
 }: SnippetCardProps) {
+  // Draw a focus ring + anchor id when keyboard-navigation highlights this card.
+  const domId = `snip-card-${snippet.id}`;
+  const focusRing = focused ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "";
   const [copied, setCopied] = useState(false);
   const [showFill, setShowFill] = useState(false);
 
@@ -103,6 +139,13 @@ export function SnippetCard({
 
   const tags = snippet.tags || [];
   const stats = getPromptStats(snippet.code);
+
+  // A short peek at the body for the list-view hover preview.
+  const codePreview = useMemo(() => {
+    const lines = snippet.code.split("\n").slice(0, 14);
+    const text = lines.join("\n");
+    return snippet.code.length > text.length ? `${text}\n…` : text;
+  }, [snippet.code]);
 
   // Prompt variables ({{name}}) — prompts only; code snippets keep literal braces.
   const vars = useMemo(
@@ -262,43 +305,65 @@ export function SnippetCard({
   if (view === "list") {
     return (
       <>
-      <article className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30">
+      <article
+        id={domId}
+        className={`group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30 ${focusRing}`}
+      >
         {starButton}
-        <button
-          onClick={() => onOpen(snippet)}
-          className="min-w-0 flex-1 text-left"
-        >
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {snippet.title}
-          </h3>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            {snippet.kind === "code" && (
-              <span className="inline-flex items-center gap-1 font-medium">
-                <Code className="h-3 w-3" />
-                Code
-              </span>
+        <HoverCard openDelay={350} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <button
+              onClick={() => onOpen(snippet)}
+              className="min-w-0 flex-1 text-left"
+            >
+              <h3 className="truncate text-sm font-semibold text-foreground">
+                {snippet.title}
+              </h3>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {snippet.kind === "code" && (
+                  <span className="inline-flex items-center gap-1 font-medium">
+                    <Code className="h-3 w-3" />
+                    Code
+                  </span>
+                )}
+                {hasVars && (
+                  <span
+                    className="inline-flex items-center gap-1 font-medium"
+                    title={`${vars.length} variable${vars.length === 1 ? "" : "s"}`}
+                  >
+                    <Braces className="h-3 w-3" />
+                    {vars.length}
+                  </span>
+                )}
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+                  {getLanguageLabel(snippet.language)}
+                </span>
+                {snippet.model && (
+                  <span className="inline-flex items-center gap-1">
+                    <Cpu className="h-3 w-3" />
+                    {snippet.model}
+                  </span>
+                )}
+                {tags.length > 0 && (
+                  <span className="truncate">{tags.join(", ")}</span>
+                )}
+              </div>
+            </button>
+          </HoverCardTrigger>
+          <HoverCardContent align="start" className="w-80">
+            <p className="mb-1 truncate text-xs font-semibold text-foreground">
+              {snippet.title}
+            </p>
+            {snippet.description && (
+              <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">
+                {snippet.description}
+              </p>
             )}
-            {hasVars && (
-              <span
-                className="inline-flex items-center gap-1 font-medium"
-                title={`${vars.length} variable${vars.length === 1 ? "" : "s"}`}
-              >
-                <Braces className="h-3 w-3" />
-                {vars.length}
-              </span>
-            )}
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
-              {getLanguageLabel(snippet.language)}
-            </span>
-            {snippet.model && (
-              <span className="inline-flex items-center gap-1">
-                <Cpu className="h-3 w-3" />
-                {snippet.model}
-              </span>
-            )}
-            {tags.length > 0 && <span className="truncate">{tags.join(", ")}</span>}
-          </div>
-        </button>
+            <pre className="max-h-52 overflow-hidden whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-[11px] leading-relaxed text-foreground">
+              {codePreview}
+            </pre>
+          </HoverCardContent>
+        </HoverCard>
         <div className="hidden shrink-0 items-center gap-3 text-xs text-muted-foreground sm:flex">
           {usageMeta}
         </div>
@@ -320,7 +385,10 @@ export function SnippetCard({
   // ---- Grid view (default): full card with code preview. ----
   return (
     <>
-    <article className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30">
+    <article
+      id={domId}
+      className={`group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30 ${focusRing}`}
+    >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <button

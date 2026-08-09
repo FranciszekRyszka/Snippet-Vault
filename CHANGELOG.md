@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-08-10
+
+### Added
+- **Export as Markdown (.md).** The detail view now has a **.md** button that
+  downloads the prompt as a Markdown file (heading + body, or a fenced code
+  block for code snippets) — alongside the existing JSON export.
+- **Keyboard navigation.** Use **j / k** (or ↑ / ↓) to move the highlight
+  through the grid or list, and **Enter** to open the highlighted entry. (`/`
+  still jumps to search, Ctrl/⌘-K opens the command palette.)
+- **Hover preview.** In the compact list view, hovering an entry's title shows
+  a quick peek — its description and the start of the body — without opening it.
+
 ## [2.11.0] — 2026-08-10
 
 ### Added
@@ -307,7 +319,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...HEAD
+[2.12.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...v2.9.0

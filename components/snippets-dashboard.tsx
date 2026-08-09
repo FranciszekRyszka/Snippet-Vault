@@ -100,6 +100,8 @@ export function SnippetsDashboard() {
   // sort order.
   const [kindFilter, setKindFilter] = useState<"all" | "prompt" | "code">("all");
   const [sort, setSort] = useState<SortKey>("recent");
+  // Keyboard navigation: index of the highlighted card in `visible` (-1 = none).
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const [showForm, setShowForm] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -367,6 +369,34 @@ export function SnippetsDashboard() {
     if (activeModel) list = list.filter((s) => s.model === activeModel);
     return list;
   }, [snippets, kindFilter, favoritesOnly, activeModel]);
+
+  // Refs so the once-bound keyboard handler always reads the current list/index.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const focusedRef = useRef(focusedIndex);
+  focusedRef.current = focusedIndex;
+
+  // Keep the keyboard highlight within range as the visible list changes.
+  useEffect(() => {
+    setFocusedIndex((i) => (i >= visible.length ? visible.length - 1 : i));
+  }, [visible.length]);
+
+  // Move the keyboard highlight and scroll it into view.
+  const moveFocus = (delta: number) => {
+    const list = visibleRef.current;
+    if (list.length === 0) return;
+    const cur = focusedRef.current;
+    const next =
+      cur < 0
+        ? delta > 0
+          ? 0
+          : list.length - 1
+        : Math.max(0, Math.min(cur + delta, list.length - 1));
+    setFocusedIndex(next);
+    document
+      .getElementById(`snip-card-${list[next].id}`)
+      ?.scrollIntoView({ block: "nearest" });
+  };
 
   const detailSnippet = useMemo(() => {
     if (detailId === null) return null;
@@ -848,6 +878,24 @@ export function SnippetsDashboard() {
       if (e.key === "/" && !typing) {
         e.preventDefault();
         searchInputRef.current?.focus();
+        return;
+      }
+
+      // Keyboard navigation over the grid/list (only when not typing).
+      if (typing) return;
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        moveFocus(1);
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        moveFocus(-1);
+      } else if (e.key === "Enter") {
+        const list = visibleRef.current;
+        const cur = focusedRef.current;
+        if (cur >= 0 && cur < list.length) {
+          e.preventDefault();
+          setDetailId(list[cur].id);
+        }
       }
     };
 
@@ -1114,11 +1162,12 @@ export function SnippetsDashboard() {
                   : "flex flex-col gap-2"
               }
             >
-              {visible.map((snippet) => (
+              {visible.map((snippet, i) => (
                 <SnippetCard
                   key={snippet.id}
                   snippet={snippet}
                   view={view}
+                  focused={i === focusedIndex}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   onTagClick={handleTagClick}
