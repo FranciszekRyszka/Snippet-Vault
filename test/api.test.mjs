@@ -161,6 +161,38 @@ test("soft delete hides the row from the list", async () => {
   assert.ok(!list.body.some((s) => s.id === id), "deleted row must not appear");
 });
 
+test("empty trash blanks tombstones and hides them from the Trash view", async () => {
+  const created = await create({ title: "purge-me", code: "secret body" });
+  const id = created.body.id;
+  await api(`/api/snippets/${id}`, { method: "DELETE", headers: auth });
+
+  // It shows in Trash before purging.
+  let trash = await api("/api/snippets?deleted=1", { headers: auth });
+  assert.ok(trash.body.some((s) => s.id === id), "deleted row is in Trash");
+
+  // Empty the Trash.
+  const purge = await api("/api/snippets/purge", { method: "POST", headers: auth });
+  assert.equal(purge.status, 200);
+  assert.ok(purge.body.purged >= 1, "reports how many were purged");
+
+  // It's gone from Trash and never in the main list.
+  trash = await api("/api/snippets?deleted=1", { headers: auth });
+  assert.ok(!trash.body.some((s) => s.id === id), "purged tombstone hidden from Trash");
+  const list = await api("/api/snippets", { headers: auth });
+  assert.ok(!list.body.some((s) => s.id === id), "tombstone stays out of the main list");
+
+  // But it survives (blanked) in the sync set so the deletion still propagates.
+  const sync = await api("/api/sync", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ records: [] }),
+  });
+  const tomb = sync.body.records.find((r) => r.uuid === created.body.uuid);
+  assert.ok(tomb, "tombstone kept for sync");
+  assert.equal(tomb.deleted, true);
+  assert.equal(tomb.title, "");
+});
+
 test("edits capture revisions; no-op saves don't", async () => {
   const created = await create({ title: "rev-v1", code: "body one" });
   const id = created.body.id;

@@ -430,11 +430,13 @@ impl Database {
 
     /// Soft-deleted (tombstoned) rows, newest-deleted first — backs the Trash
     /// view. These are hidden from every normal read; they persist only so the
-    /// deletion syncs, and so they can be restored.
+    /// deletion syncs, and so they can be restored. Emptied ("purged") tombstones
+    /// — whose content has been blanked by `purge_deleted` — are excluded so an
+    /// emptied Trash looks empty, while the tombstone itself lives on for sync.
     pub fn get_deleted(&self) -> Result<Vec<Snippet>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(&format!(
-            "SELECT {SNIPPET_COLUMNS} FROM snippets WHERE deleted = 1 ORDER BY updated_at DESC"
+            "SELECT {SNIPPET_COLUMNS} FROM snippets WHERE deleted = 1 AND (title != '' OR code != '') ORDER BY updated_at DESC"
         ))?;
         let iter = stmt.query_map([], row_to_snippet)?;
         let mut snippets = Vec::new();
@@ -442,6 +444,22 @@ impl Database {
             snippets.push(snippet?);
         }
         Ok(snippets)
+    }
+
+    /// Empty the Trash: permanently drop the *content* of every tombstone
+    /// (title/description/code/tags/model) while keeping the row as a deleted
+    /// tombstone. Blanking rather than hard-deleting is deliberate — the
+    /// tombstone must survive so the deletion can't be resurrected by a peer that
+    /// still has the row on the next sync. `updated_at` is bumped so the emptied
+    /// state itself propagates. Returns how many were purged.
+    pub fn purge_deleted(&self) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let n = conn.execute(
+            "UPDATE snippets SET title = '', description = '', code = '', tags = '[]', model = '', updated_at = ? WHERE deleted = 1 AND (title != '' OR code != '')",
+            params![now],
+        )?;
+        Ok(n as i64)
     }
 
     pub fn get_snippet(&self, id: i64) -> Result<Option<Snippet>> {
@@ -1015,6 +1033,34 @@ mod sqli_tests {
 
         let _ = std::fs::remove_file(&dest);
         let _ = std::fs::remove_file(&junk);
+    }
+
+    #[test]
+    fn empty_trash_blanks_tombstones_but_keeps_them_for_sync() {
+        let db = temp_db();
+        let a = db.create_snippet(mk("keep", "alive")).unwrap();
+        let b = db.create_snippet(mk("bin", "me")).unwrap();
+
+        // Delete one → it shows in Trash.
+        db.delete_snippet(b.id).unwrap();
+        assert_eq!(db.get_deleted().unwrap().len(), 1);
+
+        // Empty the Trash → the tombstone's content is blanked and it drops out
+        // of the Trash view, but the row survives (deleted=1) for sync.
+        let purged = db.purge_deleted().unwrap();
+        assert_eq!(purged, 1);
+        assert_eq!(db.get_deleted().unwrap().len(), 0, "purged tombstone hidden");
+
+        // The row still exists as a tombstone in the full sync set, blanked.
+        let all = db.get_all_for_sync().unwrap();
+        let tomb = all.iter().find(|r| r.uuid == b.uuid).expect("tombstone kept");
+        assert!(tomb.deleted);
+        assert_eq!(tomb.title, "");
+        assert_eq!(tomb.code, "");
+
+        // The live snippet is untouched, and a second purge is a no-op.
+        assert_eq!(db.get_snippet(a.id).unwrap().unwrap().title, "keep");
+        assert_eq!(db.purge_deleted().unwrap(), 0);
     }
 
     #[test]

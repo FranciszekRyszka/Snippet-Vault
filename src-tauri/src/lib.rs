@@ -464,6 +464,15 @@ fn get_deleted(state: State<Mutex<AppState>>) -> Result<Vec<Snippet>, String> {
     db.get_deleted().map_err(|e| e.to_string())
 }
 
+/// Empty the Trash — blank every tombstone's content (keeping the tombstone for
+/// sync). Returns how many were purged.
+#[tauri::command]
+fn purge_deleted(state: State<Mutex<AppState>>) -> Result<i64, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.purge_deleted().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn create_snippet(state: State<Mutex<AppState>>, input: CreateSnippetInput) -> Result<Snippet, String> {
     let input = validation::sanitize_create(input)?;
@@ -596,6 +605,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snippets,
             get_deleted,
+            purge_deleted,
             create_snippet,
             update_snippet,
             get_revisions,

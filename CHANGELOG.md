@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-08-10
+
+### Added
+- **Empty Trash & Restore all.** The Trash view now has **Restore all** (brings
+  back every deleted prompt at once) and **Empty trash** (permanently clears the
+  deleted content). Emptying is sync-safe: it blanks each entry's content but
+  keeps the deletion tombstone, so an emptied prompt can't be resurrected by
+  another device on the next sync — and the emptied state propagates too.
+
 ## [2.10.0] — 2026-08-09
 
 ### Added
@@ -298,7 +307,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...HEAD
+[2.11.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...v2.8.0

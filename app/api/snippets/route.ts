@@ -29,8 +29,12 @@ export async function GET(request: Request) {
     // first. These are hidden from every other read; they persist so deletions
     // sync and can be restored.
     if (searchParams.get("deleted") === "1") {
+      // Exclude emptied ("purged") tombstones so an emptied Trash looks empty
+      // while the tombstone itself lives on for sync.
       const rows = db
-        .prepare("SELECT * FROM snippets WHERE deleted = 1 ORDER BY updated_at DESC")
+        .prepare(
+          "SELECT * FROM snippets WHERE deleted = 1 AND (title != '' OR code != '') ORDER BY updated_at DESC"
+        )
         .all() as Record<string, unknown>[];
       return NextResponse.json(rows.map(rowToSnippet));
     }

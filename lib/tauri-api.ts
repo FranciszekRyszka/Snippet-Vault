@@ -254,6 +254,20 @@ export async function getDeletedSnippets(): Promise<Snippet[]> {
   return res.json();
 }
 
+// Empty the Trash: permanently clear the content of every tombstone (the row is
+// kept as a deleted tombstone so the deletion still syncs). Returns how many
+// were purged.
+export async function purgeTrash(): Promise<number> {
+  if (await useLocalDb()) {
+    return invoke<number>("purge_deleted");
+  }
+
+  const res = await apiFetch("/api/snippets/purge", { method: "POST" });
+  await throwIfNotOk(res, "Failed to empty trash");
+  const body = (await res.json()) as { purged: number };
+  return body.purged;
+}
+
 // A past version of a snippet (prompt history). `saved_at` is the version's own
 // last-saved time (its `updated_at` while it was live).
 export type SnippetRevision = {
