@@ -145,29 +145,100 @@ fn backup_database(state: State<Mutex<AppState>>, destination: String) -> Result
 
 // ---- Sync server (remote) configuration -----------------------------------
 
+// The sync token is a secret, so it's kept in the OS credential store (Windows
+// Credential Manager / macOS Keychain / Linux Secret Service) rather than in the
+// plaintext config.json. `config.json` holds only the server URL. When the OS
+// store is unavailable (e.g. a headless Linux box with no Secret Service), the
+// token falls back to config.json so sync still works — just less privately.
+const KEYRING_SERVICE: &str = "snipvault";
+const KEYRING_ACCOUNT: &str = "sync-token";
+
+fn keyring_entry() -> Option<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT).ok()
+}
+
+/// Store the token in the OS credential store. Returns true on success; false if
+/// no store is available (caller then falls back to config.json).
+fn store_token_in_keyring(token: &str) -> bool {
+    keyring_entry()
+        .map(|e| e.set_password(token).is_ok())
+        .unwrap_or(false)
+}
+
+/// Read the token from the OS credential store, if one is set there. `None` for
+/// "not set" (Error::NoEntry) or "no store available".
+fn read_token_from_keyring() -> Option<String> {
+    keyring_entry().and_then(|e| e.get_password().ok())
+}
+
+fn delete_token_from_keyring() {
+    if let Some(entry) = keyring_entry() {
+        // Ignore "nothing to delete"; the goal is just that no token remains.
+        let _ = entry.delete_credential();
+    }
+}
+
 /// Return the saved sync server, if the app is configured to use one. The
-/// frontend uses this to decide between remote and local mode at startup.
+/// frontend uses this to decide between remote and local mode at startup, and it
+/// still receives the token inline (`RemoteConfig`) — the on-disk location is an
+/// implementation detail. A legacy plaintext token found in config.json is
+/// migrated into the OS store on read and blanked in the file.
 #[tauri::command]
 fn get_remote_config() -> Result<Option<RemoteConfig>, String> {
-    Ok(load_config().remote)
+    let cfg = load_config();
+    let Some(mut remote) = cfg.remote else {
+        return Ok(None);
+    };
+
+    if let Some(token) = read_token_from_keyring() {
+        // Normal path: the secret lives in the OS store.
+        remote.token = token;
+    } else if !remote.token.is_empty() {
+        // Legacy config with a plaintext token: migrate it into the OS store and
+        // blank the file copy. If the store is unavailable, leave it in the file
+        // so sync keeps working. Either way return it so this session works.
+        if store_token_in_keyring(&remote.token) {
+            let migrated = AppConfig {
+                db_path: cfg.db_path,
+                remote: Some(RemoteConfig {
+                    url: remote.url.clone(),
+                    token: String::new(),
+                }),
+            };
+            let _ = save_config(&migrated);
+        }
+    }
+
+    Ok(Some(remote))
 }
 
 /// Save the sync server to use. `url` is normalized (trailing slash trimmed).
-/// The local db_path is left untouched so disconnecting can fall back to it.
+/// The token goes to the OS credential store; only the URL is written to
+/// config.json (with the token blanked) unless no store is available, in which
+/// case the token is kept in the file as a fallback. The local db_path is left
+/// untouched so disconnecting can fall back to it.
 #[tauri::command]
 fn set_remote_config(url: String, token: String) -> Result<(), String> {
     let url = url.trim().trim_end_matches('/').to_string();
     if url.is_empty() {
         return Err("Server URL is required".to_string());
     }
+    let stored = store_token_in_keyring(&token);
     let mut cfg = load_config();
-    cfg.remote = Some(RemoteConfig { url, token });
+    cfg.remote = Some(RemoteConfig {
+        url,
+        // Blank the file copy when the secret is safely in the OS store; keep it
+        // only as a fallback when no store is available.
+        token: if stored { String::new() } else { token },
+    });
     save_config(&cfg)
 }
 
-/// Forget the sync server and return to local mode.
+/// Forget the sync server and return to local mode. Removes both the OS-store
+/// token and the config entry.
 #[tauri::command]
 fn clear_remote_config() -> Result<(), String> {
+    delete_token_from_keyring();
     let mut cfg = load_config();
     cfg.remote = None;
     save_config(&cfg)

@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Security
+- **Sync token moved to the OS credential store.** On the desktop the sync
+  server's access token is now kept in the operating system's secure store
+  (Windows Credential Manager / macOS Keychain / Linux Secret Service) instead of
+  in plaintext in `config.json`, which now holds only the server URL. An existing
+  plaintext token is migrated into the secure store automatically on first launch
+  and blanked from the file. If no secure store is available (e.g. a headless
+  Linux box), the token falls back to `config.json` so sync keeps working.
+
 ## [2.5.0] — 2026-08-09
 
 ### Added

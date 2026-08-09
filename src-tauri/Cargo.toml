@@ -27,6 +27,19 @@ dirs = "5"
 chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 
+# OS credential store for the sync token, per platform so each build only pulls
+# in its own backend (Windows Credential Manager / macOS Keychain / Linux Secret
+# Service). If the store is unavailable (e.g. a headless Linux box), the code
+# falls back to storing the token in config.json — see get/set_remote_config.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
+
 [profile.release]
 panic = "abort"
 codegen-units = 1
