@@ -14,6 +14,16 @@ export async function GET(request: Request) {
   const searchMode = searchParams.get("searchMode") || "all";
 
   try {
+    // Trash view: return only the soft-deleted (tombstoned) rows, newest-deleted
+    // first. These are hidden from every other read; they persist so deletions
+    // sync and can be restored.
+    if (searchParams.get("deleted") === "1") {
+      const rows = db
+        .prepare("SELECT * FROM snippets WHERE deleted = 1 ORDER BY updated_at DESC")
+        .all() as Record<string, unknown>[];
+      return NextResponse.json(rows.map(rowToSnippet));
+    }
+
     // Hide soft-deleted (tombstoned) rows — they exist only so the deletion can
     // propagate to other machines during sync.
     let query = "SELECT * FROM snippets WHERE deleted = 0";

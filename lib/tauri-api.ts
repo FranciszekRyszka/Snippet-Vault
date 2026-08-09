@@ -239,6 +239,18 @@ export async function getSnippets(params?: {
   return res.json();
 }
 
+// The soft-deleted (tombstoned) entries, newest-deleted first — the Trash view.
+// They're hidden from getSnippets(); restore one with restoreSnippet().
+export async function getDeletedSnippets(): Promise<Snippet[]> {
+  if (await useLocalDb()) {
+    return invoke<Snippet[]>("get_deleted");
+  }
+
+  const res = await apiFetch("/api/snippets?deleted=1");
+  await throwIfNotOk(res, "Failed to load deleted snippets");
+  return res.json();
+}
+
 export async function createSnippet(input: CreateSnippetInput): Promise<Snippet> {
   if (await useLocalDb()) {
     return invoke<Snippet>("create_snippet", { input });
@@ -320,6 +332,36 @@ export async function restoreSnippet(snippet: Snippet): Promise<Snippet | null> 
   });
   await throwIfNotOk(res, "Failed to restore snippet");
   return res.json();
+}
+
+// ---- Whole-library export / import ----------------------------------------
+
+// Export the entire library as an array of sync records (uuid, kind, timestamps
+// — everything needed to round-trip), for a JSON backup or transfer. Live
+// prompts only; tombstones are omitted, since a backup restores your current
+// library. Works in both runtimes via the local getSnippets().
+export async function exportLibrary(): Promise<SyncRecord[]> {
+  const snippets = await getSnippets();
+  return snippets.map(({ id: _id, ...rest }) => ({ ...rest, deleted: false }));
+}
+
+// Import a library file by merging its records into the local database by uuid,
+// newest-`updated_at` winning — the exact reconciliation a sync performs, so
+// re-importing updates entries in place instead of duplicating them. Returns
+// how many rows were inserted or updated.
+export async function importLibrary(records: SyncRecord[]): Promise<number> {
+  if (await useLocalDb()) {
+    return invoke<number>("apply_sync_records", { records });
+  }
+
+  const res = await apiFetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ records }),
+  });
+  await throwIfNotOk(res, "Failed to import library");
+  const body = (await res.json()) as { applied: number };
+  return body.applied;
 }
 
 // ---- Database setup / management (desktop only) ---------------------------

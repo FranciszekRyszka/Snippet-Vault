@@ -13,6 +13,43 @@ ships.
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-08-09
+
+### Added
+- **Trash (recently deleted).** A new Trash button in the header lists entries
+  you've deleted and lets you **restore** any of them — deletes were already
+  soft (kept as tombstones so they sync), and this surfaces them as a safety
+  net. Restoring reuses the same undelete path as undo, so it syncs cleanly
+  without creating duplicates.
+- **Prompt variables.** Prompts can now contain `{{placeholders}}` (e.g.
+  `{{topic}}`, `{{tone}}`). Copying such a prompt opens a small **fill-in dialog**
+  — one field per variable with a live preview — and copies the completed text.
+  Variable-free prompts copy in one click as before, and code snippets keep their
+  literal braces untouched. A badge shows how many variables a prompt has.
+- **Whole-library export & smarter import.** A new export button downloads your
+  entire library as a single JSON file (`snipvault-library-<date>.json`).
+  Importing that file **merges by entry id** — re-importing updates existing
+  entries in place (newest edit wins) instead of creating duplicates — while
+  importing single/multiple exported prompts works as before. A clean backup and
+  transfer story that round-trips losslessly.
+- **Sync status indicator.** When a sync server is configured, the header now
+  shows a live indicator — a spinner while syncing, the time since the last
+  successful sync ("Synced 2m ago", remembered across launches), or a "Sync
+  failed" state with the error on hover. Clicking it syncs immediately. Syncs
+  started from Settings or first-run setup update the same indicator.
+- **Automated test suite + CI.** vitest unit tests for the API validators
+  (`lib/api-utils.ts`) and a dependency-free `node:test` HTTP integration suite
+  that exercises the sync-server API (auth gate, CRUD, and the newest-wins sync
+  merge) against a throwaway database. A new **Tests** GitHub Actions workflow
+  runs both on every push and pull request, complementing the Rust tests and the
+  security audit. Run locally with `pnpm test`.
+
+### Changed
+- The self-hosted server's database location can now be overridden with the
+  **`SNIPVAULT_DB_PATH`** environment variable (defaults to `./data/snippets.db`
+  as before) — useful for placing the file on a specific volume, and used by the
+  test harness to run against a disposable database.
+
 ## [2.3.3] — 2026-08-07
 
 ### Changed
@@ -159,7 +196,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...v2.4.0
 [2.3.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.0...v2.3.1

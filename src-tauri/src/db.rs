@@ -328,6 +328,22 @@ impl Database {
         Ok(snippets)
     }
 
+    /// Soft-deleted (tombstoned) rows, newest-deleted first — backs the Trash
+    /// view. These are hidden from every normal read; they persist only so the
+    /// deletion syncs, and so they can be restored.
+    pub fn get_deleted(&self) -> Result<Vec<Snippet>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SNIPPET_COLUMNS} FROM snippets WHERE deleted = 1 ORDER BY updated_at DESC"
+        ))?;
+        let iter = stmt.query_map([], row_to_snippet)?;
+        let mut snippets = Vec::new();
+        for snippet in iter {
+            snippets.push(snippet?);
+        }
+        Ok(snippets)
+    }
+
     pub fn get_snippet(&self, id: i64) -> Result<Option<Snippet>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(

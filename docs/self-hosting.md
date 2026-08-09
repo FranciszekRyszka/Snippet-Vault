@@ -101,7 +101,8 @@ sudo systemctl enable --now snipvault
 ```
 
 The database is written to `data/snippets.db` inside the working directory —
-back that file up.
+back that file up. To place it elsewhere, set `SNIPVAULT_DB_PATH` to the full
+file path you want (the parent directory is created if needed).
 
 ---
 

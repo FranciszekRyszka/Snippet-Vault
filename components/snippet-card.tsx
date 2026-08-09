@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Pencil,
   Trash2,
@@ -11,10 +11,13 @@ import {
   Download,
   Cpu,
   Code,
+  Braces,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
+import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
+import { FillVarsDialog } from "./fill-vars-dialog";
 import type { Snippet } from "@/lib/tauri-api";
 
 type SnippetCardProps = {
@@ -87,6 +90,7 @@ export function SnippetCard({
   onExported,
 }: SnippetCardProps) {
   const [copied, setCopied] = useState(false);
+  const [showFill, setShowFill] = useState(false);
 
   const date = new Date(snippet.created_at).toLocaleDateString("en-US", {
     month: "short",
@@ -97,12 +101,29 @@ export function SnippetCard({
   const tags = snippet.tags || [];
   const stats = getPromptStats(snippet.code);
 
+  // Prompt variables ({{name}}) — prompts only; code snippets keep literal braces.
+  const vars = useMemo(
+    () => (snippet.kind === "code" ? [] : extractVars(snippet.code)),
+    [snippet.kind, snippet.code]
+  );
+  const hasVars = vars.length > 0;
+
+  // Flash the "copied" checkmark after a successful (raw or filled) copy.
+  const flashCopied = () => {
+    onCopied(snippet.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleCopy = async () => {
+    // A prompt with variables opens the fill dialog instead of copying raw.
+    if (hasVars) {
+      setShowFill(true);
+      return;
+    }
     try {
       await navigator.clipboard.writeText(snippet.code);
-      onCopied(snippet.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      flashCopied();
     } catch (err) {
       // Clipboard can be blocked (permissions/insecure context). Don't show a
       // false "copied" state; just log it.
@@ -134,7 +155,8 @@ export function SnippetCard({
             ? "text-green-600 dark:text-green-500"
             : "text-muted-foreground hover:bg-accent hover:text-foreground"
         }`}
-        aria-label={copied ? "Copied" : "Copy prompt"}
+        aria-label={copied ? "Copied" : hasVars ? "Fill variables and copy" : "Copy prompt"}
+        title={hasVars ? "Fill variables & copy" : "Copy prompt"}
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
@@ -213,9 +235,22 @@ export function SnippetCard({
       </span>
     ) : null;
 
+  // Badge marking a prompt with fillable variables, so it's discoverable that
+  // copying opens the fill dialog.
+  const varsBadge = hasVars ? (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
+      title={`${vars.length} variable${vars.length === 1 ? "" : "s"} to fill on copy`}
+    >
+      <Braces className="h-3 w-3" />
+      {vars.length}
+    </span>
+  ) : null;
+
   // ---- List view: a compact row, no code preview; click to open. ----
   if (view === "list") {
     return (
+      <>
       <article className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30">
         {starButton}
         <button
@@ -230,6 +265,15 @@ export function SnippetCard({
               <span className="inline-flex items-center gap-1 font-medium">
                 <Code className="h-3 w-3" />
                 Code
+              </span>
+            )}
+            {hasVars && (
+              <span
+                className="inline-flex items-center gap-1 font-medium"
+                title={`${vars.length} variable${vars.length === 1 ? "" : "s"}`}
+              >
+                <Braces className="h-3 w-3" />
+                {vars.length}
               </span>
             )}
             <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
@@ -249,11 +293,21 @@ export function SnippetCard({
         </div>
         {actionButtons}
       </article>
+      {showFill && (
+        <FillVarsDialog
+          title={snippet.title}
+          code={snippet.code}
+          onClose={() => setShowFill(false)}
+          onCopied={flashCopied}
+        />
+      )}
+      </>
     );
   }
 
   // ---- Grid view (default): full card with code preview. ----
   return (
+    <>
     <article className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -285,6 +339,7 @@ export function SnippetCard({
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {kindBadge}
+          {varsBadge}
           <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             {getLanguageLabel(snippet.language)}
           </span>
@@ -305,5 +360,14 @@ export function SnippetCard({
         </div>
       </div>
     </article>
+    {showFill && (
+      <FillVarsDialog
+        title={snippet.title}
+        code={snippet.code}
+        onClose={() => setShowFill(false)}
+        onCopied={flashCopied}
+      />
+    )}
+    </>
   );
 }

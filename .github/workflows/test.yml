@@ -1,0 +1,63 @@
+name: Tests
+
+# Runs the JS/TS test suites on every push and pull request:
+#   * unit — vitest over the pure validators in lib/ (fast, no server).
+#   * api  — boots the built Next.js server on a throwaway SQLite DB and runs the
+#            node:test HTTP integration suite against it.
+# Complements the Rust tests (run via cargo) and the security-audit workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build server bundle
+        run: pnpm build
+
+      - name: API integration tests
+        run: node test/run-api-tests.mjs

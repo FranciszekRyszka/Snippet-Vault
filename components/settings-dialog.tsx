@@ -20,9 +20,9 @@ import {
   getSyncServer,
   saveSyncServer,
   removeSyncServer,
-  syncNow,
   type SyncServer,
 } from "@/lib/tauri-api";
+import { runSync as runSharedSync } from "@/hooks/use-sync";
 import {
   checkForUpdate,
   relaunchApp,
@@ -79,8 +79,10 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   }, []);
 
   // Push local changes, pull the server's, then reload the dashboard's lists.
+  // Goes through the shared sync store so the header indicator reflects a sync
+  // started from here (spinner + last-synced time).
   const runSync = async () => {
-    const result = await syncNow();
+    const result = await runSharedSync();
     onDbChanged();
     return result;
   };
@@ -130,6 +132,7 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
       await removeSyncServer();
       setServer(null);
       setTokenInput("");
+      onDbChanged();
       setSyncNotice("Sync server removed. Your local library is unchanged.");
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));

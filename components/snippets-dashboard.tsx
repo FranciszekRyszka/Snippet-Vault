@@ -9,6 +9,7 @@ import { SnippetDetail } from "./snippet-detail";
 import { EmptyState } from "./empty-state";
 import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
+import { TrashDialog } from "./trash-dialog";
 import { UpdateBanner } from "./update-banner";
 import {
   checkForUpdate,
@@ -24,14 +25,17 @@ import {
   setFavorite,
   recordCopy,
   restoreSnippet,
+  exportLibrary,
+  importLibrary,
   getInitStatus,
   getSyncServer,
-  syncNow,
   isTauri,
   type Snippet,
   type CreateSnippetInput,
   type SnippetKind,
+  type SyncRecord,
 } from "@/lib/tauri-api";
+import { runSync } from "@/hooks/use-sync";
 import { LANGUAGES } from "@/lib/languages";
 import { Cpu, Loader2, X } from "lucide-react";
 
@@ -49,8 +53,12 @@ export function SnippetsDashboard() {
   // Database readiness (desktop first-run setup). `null` = still checking.
   const [dbReady, setDbReady] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   // Set after mount to avoid hydration mismatch on the desktop-only settings UI.
   const [desktop, setDesktop] = useState(false);
+  // Whether a sync server is configured (desktop only) — gates the header's
+  // sync indicator. Kept in sync with add/remove in Settings.
+  const [syncEnabled, setSyncEnabled] = useState(false);
 
   // Update found by the automatic startup check (desktop only).
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
@@ -210,6 +218,20 @@ export function SnippetsDashboard() {
     }
   }, [dropPendingDeletes]);
 
+  // Run a sync (updating the shared status the header indicator reads), then
+  // reload the lists on success. Used by the startup sync and the header's
+  // Sync-now button. Errors are swallowed here — the sync store records them for
+  // the indicator, and the local library keeps working offline.
+  const runSyncAndReload = useCallback(async () => {
+    try {
+      await runSync();
+      fetchSnippets();
+      fetchAllSnippets();
+    } catch {
+      // Offline or server error — the indicator shows the failed state.
+    }
+  }, [fetchSnippets, fetchAllSnippets]);
+
   // Decide whether the app is ready to load snippets. The app is always
   // local-first, so this is just the desktop first-run check (the browser
   // always reports ready). A configured sync server reconciles separately,
@@ -257,16 +279,12 @@ export function SnippetsDashboard() {
     if (!dbReady || didStartupSync.current) return;
     didStartupSync.current = true;
     (async () => {
-      try {
-        if (!(await getSyncServer())) return;
-        await syncNow();
-        fetchSnippets();
-        fetchAllSnippets();
-      } catch {
-        // Offline or server error — stay on the local library.
-      }
+      const server = await getSyncServer();
+      setSyncEnabled(!!server);
+      if (!server) return;
+      await runSyncAndReload();
     })();
-  }, [dbReady, fetchSnippets, fetchAllSnippets]);
+  }, [dbReady, runSyncAndReload]);
 
   // Clear any pending timers on unmount.
   useEffect(() => {
@@ -447,9 +465,58 @@ export function SnippetsDashboard() {
 
   const handleImportClick = () => fileInputRef.current?.click();
 
-  // Import prompts from a JSON file — either a single exported prompt (an object)
-  // or an array of them. Each item is imported independently: a failing item is
-  // skipped and tallied rather than aborting the whole import, and the list is
+  // Export the whole library to a JSON file (the sync-record shape, so it can be
+  // re-imported losslessly). Confirms with a toast like single-prompt export.
+  const handleExportLibrary = useCallback(async () => {
+    try {
+      const records = await exportLibrary();
+      if (records.length === 0) {
+        showNotice("Nothing to export yet — your library is empty.");
+        return;
+      }
+      const filename = `snipvault-library-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`;
+      const blob = new Blob([JSON.stringify(records, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showNotice(
+        `Exported ${records.length} ${
+          records.length === 1 ? "entry" : "entries"
+        } to your Downloads folder (${filename}).`
+      );
+    } catch (err) {
+      console.error("Library export failed:", err);
+      showError(err instanceof Error ? err.message : "Couldn't export the library.");
+    }
+  }, [showNotice, showError]);
+
+  // Whether a parsed file is a whole-library export: an array of sync records,
+  // each carrying a uuid and a timestamp. Those merge by uuid (newest wins) via
+  // the sync path, so re-importing updates in place instead of duplicating.
+  const isLibraryExport = (parsed: unknown): parsed is SyncRecord[] =>
+    Array.isArray(parsed) &&
+    parsed.length > 0 &&
+    parsed.every(
+      (r) =>
+        r &&
+        typeof r === "object" &&
+        typeof (r as Record<string, unknown>).uuid === "string" &&
+        typeof (r as Record<string, unknown>).updated_at === "string"
+    );
+
+  // Import prompts from a JSON file. A whole-library export (records with uuids)
+  // is merged by uuid via the sync path; otherwise the file is treated as one or
+  // more content prompts, each imported independently — a failing item is
+  // skipped and tallied rather than aborting the whole import. The list is
   // always refreshed afterward so successful items are visible.
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -459,6 +526,25 @@ export function SnippetsDashboard() {
     let skipped = 0;
     try {
       const parsed = JSON.parse(await file.text());
+
+      // Library file: merge by uuid (dedupes on re-import) and stop here.
+      if (isLibraryExport(parsed)) {
+        try {
+          const applied = await importLibrary(parsed);
+          showNotice(
+            `Imported library — ${applied} ${
+              applied === 1 ? "entry" : "entries"
+            } added or updated.`
+          );
+        } catch (err) {
+          console.error("Library import failed:", err);
+          showError(
+            err instanceof Error ? err.message : "Couldn't import that library file."
+          );
+        }
+        return; // the finally below refreshes the lists
+      }
+
       const items = Array.isArray(parsed) ? parsed : [parsed];
       const validLanguages = new Set(LANGUAGES.map((l) => l.value));
       for (const item of items) {
@@ -527,7 +613,11 @@ export function SnippetsDashboard() {
 
   // Whether any modal/dialog is currently open.
   const anyModalOpen =
-    showForm || showSettings || detailId !== null || dbReady === false;
+    showForm ||
+    showSettings ||
+    showTrash ||
+    detailId !== null ||
+    dbReady === false;
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -596,7 +686,11 @@ export function SnippetsDashboard() {
       <Header
         onNewSnippet={handleNewSnippet}
         onImport={handleImportClick}
+        onExportLibrary={handleExportLibrary}
+        onOpenTrash={() => setShowTrash(true)}
         onOpenSettings={desktop ? () => setShowSettings(true) : undefined}
+        syncEnabled={syncEnabled}
+        onSyncNow={runSyncAndReload}
       />
 
       <input
@@ -791,6 +885,16 @@ export function SnippetsDashboard() {
         </div>
       )}
 
+      {showTrash && (
+        <TrashDialog
+          onClose={() => setShowTrash(false)}
+          onRestored={() => {
+            fetchSnippets();
+            fetchAllSnippets();
+          }}
+        />
+      )}
+
       {dbReady === false && (
         <DbSetupDialog onComplete={() => setDbReady(true)} />
       )}
@@ -800,8 +904,11 @@ export function SnippetsDashboard() {
           onClose={() => setShowSettings(false)}
           onDbChanged={() => {
             // Covers switching local DB file and connecting/disconnecting a
-            // sync server: re-evaluate the data source, then reload.
+            // sync server: re-evaluate the data source and whether a server is
+            // configured (so the header indicator appears/disappears), then
+            // reload.
             refreshReady();
+            getSyncServer().then((s) => setSyncEnabled(!!s));
             fetchSnippets();
             fetchAllSnippets();
           }}

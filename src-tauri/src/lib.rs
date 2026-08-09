@@ -194,6 +194,13 @@ fn get_snippets(
 }
 
 #[tauri::command]
+fn get_deleted(state: State<Mutex<AppState>>) -> Result<Vec<Snippet>, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.get_deleted().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn create_snippet(state: State<Mutex<AppState>>, input: CreateSnippetInput) -> Result<Snippet, String> {
     let input = validation::sanitize_create(input)?;
     let state = state.lock().map_err(|e| e.to_string())?;
@@ -305,6 +312,7 @@ pub fn run() {
         .manage(Mutex::new(app_state))
         .invoke_handler(tauri::generate_handler![
             get_snippets,
+            get_deleted,
             create_snippet,
             update_snippet,
             delete_snippet,

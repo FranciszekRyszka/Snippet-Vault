@@ -1,8 +1,16 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import path from "path";
 
-const dbPath = path.join(process.cwd(), "data", "snippets.db");
+// The SQLite file location. Defaults to ./data/snippets.db under the current
+// working directory (the Docker image mounts a volume there). Set
+// SNIPVAULT_DB_PATH to relocate it — used by the API test harness to run
+// against a disposable database, and handy for self-hosters who want the file
+// somewhere specific.
+const dbPath = process.env.SNIPVAULT_DB_PATH
+  ? path.resolve(process.env.SNIPVAULT_DB_PATH)
+  : path.join(process.cwd(), "data", "snippets.db");
 
 let connection: Database.Database | null = null;
 
@@ -13,6 +21,11 @@ let connection: Database.Database | null = null;
 // the first real query means the DB opens only when a request actually runs.
 function getDb(): Database.Database {
   if (connection) return connection;
+
+  // Ensure the parent directory exists. The default ./data is normally present,
+  // but a custom SNIPVAULT_DB_PATH (or a fresh checkout) may point somewhere
+  // that isn't created yet; better-sqlite3 would otherwise throw on open.
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   const conn = new Database(dbPath);
 

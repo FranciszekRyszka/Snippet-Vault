@@ -9,7 +9,8 @@ import {
   Server,
   Plug,
 } from "lucide-react";
-import { initializeNewDb, useExistingDb, saveSyncServer, syncNow } from "@/lib/tauri-api";
+import { initializeNewDb, useExistingDb, saveSyncServer } from "@/lib/tauri-api";
+import { runSync } from "@/hooks/use-sync";
 
 type DbSetupDialogProps = {
   // Called once a database has been created or selected.
@@ -102,7 +103,7 @@ export function DbSetupDialog({ onComplete }: DbSetupDialogProps) {
     try {
       await initializeNewDb();
       await saveSyncServer(urlInput, tokenInput);
-      await syncNow();
+      await runSync();
       onComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

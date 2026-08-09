@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -10,6 +10,9 @@
     "start": "next start -H 127.0.0.1",
     "serve": "next start -H 0.0.0.0",
     "lint": "eslint .",
+    "test": "pnpm test:unit && pnpm test:api",
+    "test:unit": "vitest run",
+    "test:api": "node test/run-api-tests.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
@@ -81,6 +84,7 @@
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "^4.1.10"
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   Copy,
@@ -12,11 +12,14 @@ import {
   Cpu,
   Hash,
   Code,
+  Braces,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
+import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { exportSnippet } from "./snippet-card";
+import { FillVarsDialog } from "./fill-vars-dialog";
 import type { Snippet } from "@/lib/tauri-api";
 
 type SnippetDetailProps = {
@@ -57,8 +60,16 @@ export function SnippetDetail({
   onExported,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
+  const [showFill, setShowFill] = useState(false);
   const stats = getPromptStats(snippet.code);
   const tags = snippet.tags || [];
+
+  // Prompt variables ({{name}}) — prompts only; code snippets keep literal braces.
+  const vars = useMemo(
+    () => (snippet.kind === "code" ? [] : extractVars(snippet.code)),
+    [snippet.kind, snippet.code]
+  );
+  const hasVars = vars.length > 0;
 
   // Close on Escape.
   useEffect(() => {
@@ -69,12 +80,21 @@ export function SnippetDetail({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  const flashCopied = () => {
+    onCopied(snippet.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleCopy = async () => {
+    // A prompt with variables opens the fill dialog instead of copying raw.
+    if (hasVars) {
+      setShowFill(true);
+      return;
+    }
     try {
       await navigator.clipboard.writeText(snippet.code);
-      onCopied(snippet.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      flashCopied();
     } catch (err) {
       // Clipboard can be blocked (permissions/insecure context). Don't show a
       // false "copied" state; just log it.
@@ -90,6 +110,7 @@ export function SnippetDetail({
   ];
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/20 p-4 backdrop-blur-sm sm:p-8"
       onClick={onClose}
@@ -181,6 +202,12 @@ export function SnippetDetail({
             {showTokenEstimate(snippet.kind) && (
               <> · ~{formatCount(stats.tokens)} tokens</>
             )}
+            {hasVars && (
+              <>
+                {" "}
+                · {vars.length} variable{vars.length === 1 ? "" : "s"}
+              </>
+            )}
           </p>
         </div>
 
@@ -222,10 +249,20 @@ export function SnippetDetail({
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            {copied ? "Copied" : "Copy"}
+            {copied ? "Copied" : hasVars ? "Fill & Copy" : "Copy"}
           </button>
         </div>
       </div>
     </div>
+
+      {showFill && (
+        <FillVarsDialog
+          title={snippet.title}
+          code={snippet.code}
+          onClose={() => setShowFill(false)}
+          onCopied={flashCopied}
+        />
+      )}
+    </>
   );
 }
