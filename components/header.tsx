@@ -17,6 +17,7 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useSyncStore } from "@/hooks/use-sync";
+import { AccentPicker } from "./accent-picker";
 
 // Compact relative time for the sync indicator ("2m ago"), kept short for the
 // header chip rather than date-fns's longer "2 minutes ago".
@@ -188,6 +189,7 @@ export function Header({
               <Settings className="h-4 w-4" />
             </button>
           )}
+          <AccentPicker />
           {mounted && (
             <button
               onClick={() =>

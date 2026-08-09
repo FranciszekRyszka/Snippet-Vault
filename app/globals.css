@@ -80,6 +80,27 @@
   }
 }
 
+/* Accent themes: override the primary/ring hue via a data-accent attribute on
+   <html> (set from localStorage before paint in the layout). Each accent has a
+   light value and a slightly lighter dark value; all keep white as the primary
+   foreground, so contrast stays fine. Default (blue) needs no attribute. */
+@layer base {
+  [data-accent="violet"] { --primary: 262 83% 58%; --ring: 262 83% 58%; }
+  .dark[data-accent="violet"] { --primary: 263 70% 65%; --ring: 263 70% 65%; }
+
+  [data-accent="emerald"] { --primary: 160 84% 39%; --ring: 160 84% 39%; }
+  .dark[data-accent="emerald"] { --primary: 160 84% 45%; --ring: 160 84% 45%; }
+
+  [data-accent="rose"] { --primary: 347 77% 50%; --ring: 347 77% 50%; }
+  .dark[data-accent="rose"] { --primary: 350 80% 60%; --ring: 350 80% 60%; }
+
+  [data-accent="orange"] { --primary: 21 90% 48%; --ring: 21 90% 48%; }
+  .dark[data-accent="orange"] { --primary: 25 95% 58%; --ring: 25 95% 58%; }
+
+  [data-accent="teal"] { --primary: 174 72% 40%; --ring: 174 72% 40%; }
+  .dark[data-accent="teal"] { --primary: 174 72% 46%; --ring: 174 72% 46%; }
+}
+
 @layer base {
   * {
     @apply border-border;

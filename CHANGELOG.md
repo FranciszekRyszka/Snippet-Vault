@@ -13,6 +13,16 @@ ships.
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-08-09
+
+### Added
+- **Saved searches (views).** Save the current filter combo — search, language,
+  tag, kind, sort, favourites, model — under a name from the new **Views**
+  dropdown, then re-apply it in one click. Views are stored locally per install.
+- **Accent themes.** A palette button in the header lets you switch the app's
+  accent colour (blue, violet, emerald, rose, orange, teal). Your choice is
+  remembered and applied instantly, in both light and dark mode.
+
 ## [2.9.0] — 2026-08-09
 
 ### Added
@@ -288,7 +298,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...HEAD
+[2.10.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...v2.7.0

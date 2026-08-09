@@ -11,6 +11,8 @@ import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { TrashDialog } from "./trash-dialog";
 import { InsightsDialog } from "./insights-dialog";
+import { SavedViews } from "./saved-views";
+import type { ViewFilters } from "@/lib/saved-views";
 import { CommandPalette } from "./command-palette";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { extractVars } from "@/lib/prompt-vars";
@@ -870,6 +872,29 @@ export function SnippetsDashboard() {
     favoritesOnly ||
     !!activeModel;
 
+  // The current filter combo, for saving/applying "views" (saved searches).
+  const currentFilters: ViewFilters = {
+    search,
+    searchMode,
+    language,
+    activeTag,
+    favoritesOnly,
+    activeModel,
+    kind: kindFilter,
+    sort,
+  };
+
+  const applyView = (f: ViewFilters) => {
+    setSearch(f.search);
+    setSearchMode(f.searchMode as SearchMode);
+    setLanguage(f.language);
+    setActiveTag(f.activeTag);
+    setFavoritesOnly(f.favoritesOnly);
+    setActiveModel(f.activeModel);
+    setKindFilter(f.kind);
+    setSort(f.sort as SortKey);
+  };
+
   // Drag-and-drop import. A depth counter keeps the overlay stable across
   // dragenter/leave on child elements (they'd otherwise flicker it). Only reacts
   // when actual files are being dragged.
@@ -1021,22 +1046,27 @@ export function SnippetsDashboard() {
               ))}
             </div>
 
-            {/* Sort order (server-side). */}
-            <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <ArrowDownUp className="h-3.5 w-3.5" />
-              <span className="sr-only">Sort by</span>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                className="rounded-lg border border-border bg-card px-2 py-1 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex items-center gap-2">
+              {/* Saved searches ("views"). */}
+              <SavedViews current={currentFilters} onApply={applyView} />
+
+              {/* Sort order (server-side). */}
+              <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <ArrowDownUp className="h-3.5 w-3.5" />
+                <span className="sr-only">Sort by</span>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  className="rounded-lg border border-border bg-card px-2 py-1 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         )}
 
