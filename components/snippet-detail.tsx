@@ -257,6 +257,7 @@ export function SnippetDetail({
 
       {showFill && (
         <FillVarsDialog
+          uuid={snippet.uuid}
           title={snippet.title}
           code={snippet.code}
           onClose={() => setShowFill(false)}

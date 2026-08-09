@@ -161,6 +161,43 @@ test("soft delete hides the row from the list", async () => {
   assert.ok(!list.body.some((s) => s.id === id), "deleted row must not appear");
 });
 
+test("sort orders by the requested key, with a safe fallback", async () => {
+  // Two uniquely-titled entries so we can spot them in a shared list; pin one
+  // and give it copies so the sort keys are distinguishable.
+  const tag = "sorttest-" + crypto.randomUUID().slice(0, 8);
+  const a = await create({ title: `zzz ${tag}`, tags: [tag] });
+  const b = await create({ title: `aaa ${tag}`, tags: [tag] });
+  createdIds.push(a.body.id, b.body.id);
+  // "aaa" (b) gets used the most and pinned, so it must lead every sort.
+  await api(`/api/snippets/${b.body.id}/copy`, { method: "POST", headers: auth });
+  await api(`/api/snippets/${b.body.id}`, {
+    method: "PATCH",
+    headers: json,
+    body: JSON.stringify({ favorite: true }),
+  });
+
+  const only = (list) => list.body.filter((s) => (s.tags ?? []).includes(tag));
+
+  // Alphabetical: pinned "aaa" still leads, then "zzz".
+  const alpha = await api(`/api/snippets?sort=alpha&tag=${tag}`, { headers: auth });
+  assert.deepEqual(
+    only(alpha).map((s) => s.id),
+    [b.body.id, a.body.id],
+    "pin leads, then A→Z"
+  );
+
+  // Most-used: pinned + most-copied "aaa" leads.
+  const most = await api(`/api/snippets?sort=most-used&tag=${tag}`, { headers: auth });
+  assert.equal(only(most)[0].id, b.body.id, "pinned, most-used row leads");
+
+  // An unknown sort key must not error — it falls back to the default order.
+  const bad = await api(`/api/snippets?sort=%27%3B+DROP+TABLE+snippets%3B+--&tag=${tag}`, {
+    headers: auth,
+  });
+  assert.equal(bad.status, 200);
+  assert.equal(only(bad).length, 2, "garbage sort falls back safely");
+});
+
 test("sync inserts a pushed record and echoes the merged set", async () => {
   const uuid = "test-" + crypto.randomUUID();
   const { status, body } = await api("/api/sync", {

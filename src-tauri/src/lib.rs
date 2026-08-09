@@ -182,6 +182,7 @@ fn get_snippets(
     language: Option<String>,
     tag: Option<String>,
     search_mode: Option<String>,
+    sort: Option<String>,
 ) -> Result<Vec<Snippet>, String> {
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
@@ -190,6 +191,7 @@ fn get_snippets(
         language.as_deref(),
         tag.as_deref(),
         search_mode.as_deref(),
+        sort.as_deref(),
     ).map_err(|e| e.to_string())
 }
 

@@ -3,16 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Copy } from "lucide-react";
 import { extractVars, fillVars } from "@/lib/prompt-vars";
+import { loadVarValues, saveVarValues } from "@/lib/var-store";
 
 // A small modal for filling a prompt's {{variables}} before copying. One input
 // per variable, a live preview of the substituted text, and "Copy filled".
 // Rendered above the detail view (z-60) when a prompt with variables is copied.
+// The values are remembered per-prompt (by `uuid`) and pre-filled next time.
 export function FillVarsDialog({
+  uuid,
   title,
   code,
   onClose,
   onCopied,
 }: {
+  uuid: string;
   title: string;
   code: string;
   onClose: () => void;
@@ -20,7 +24,10 @@ export function FillVarsDialog({
   onCopied: () => void;
 }) {
   const vars = useMemo(() => extractVars(code), [code]);
-  const [values, setValues] = useState<Record<string, string>>({});
+  // Seed with the values used the last time this prompt was filled.
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    loadVarValues(uuid),
+  );
   const [error, setError] = useState<string | null>(null);
   const filled = useMemo(() => fillVars(code, values), [code, values]);
 
@@ -36,6 +43,7 @@ export function FillVarsDialog({
   const copyFilled = async () => {
     try {
       await navigator.clipboard.writeText(filled);
+      saveVarValues(uuid, values, vars);
       onCopied();
       onClose();
     } catch (err) {

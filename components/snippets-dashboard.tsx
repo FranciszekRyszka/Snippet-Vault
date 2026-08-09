@@ -10,6 +10,9 @@ import { EmptyState } from "./empty-state";
 import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { TrashDialog } from "./trash-dialog";
+import { CommandPalette } from "./command-palette";
+import { FillVarsDialog } from "./fill-vars-dialog";
+import { extractVars } from "@/lib/prompt-vars";
 import { UpdateBanner } from "./update-banner";
 import {
   checkForUpdate,
@@ -37,12 +40,22 @@ import {
 } from "@/lib/tauri-api";
 import { runSync } from "@/hooks/use-sync";
 import { LANGUAGES } from "@/lib/languages";
-import { Cpu, Loader2, X } from "lucide-react";
+import { ArrowDownUp, Cpu, Loader2, X } from "lucide-react";
 
 // Bottom-center toast stack: newest at the bottom, capped so a burst of exports
 // doesn't cover the screen. Beyond the cap the oldest toast is evicted.
 type Toast = { id: number; message: string; type: "info" | "error" };
 const MAX_TOASTS = 3;
+
+// Server-side sort orders. The keys map to fixed ORDER BY fragments in both
+// backends (app/api/snippets/route.ts and src-tauri/src/db.rs).
+type SortKey = "recent" | "most-used" | "recently-used" | "alpha";
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "recent", label: "Newest" },
+  { value: "most-used", label: "Most used" },
+  { value: "recently-used", label: "Recently used" },
+  { value: "alpha", label: "A–Z" },
+];
 
 export function SnippetsDashboard() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
@@ -54,6 +67,10 @@ export function SnippetsDashboard() {
   const [dbReady, setDbReady] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  // Cmd/Ctrl-K quick launcher, and the prompt whose variables the launcher (or a
+  // detail copy) is currently filling before copying.
+  const [showPalette, setShowPalette] = useState(false);
+  const [fillTarget, setFillTarget] = useState<Snippet | null>(null);
   // Set after mount to avoid hydration mismatch on the desktop-only settings UI.
   const [desktop, setDesktop] = useState(false);
   // Whether a sync server is configured (desktop only) — gates the header's
@@ -71,6 +88,10 @@ export function SnippetsDashboard() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [activeModel, setActiveModel] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
+  // Kind quick-filter (client-side over the loaded rows) and the server-side
+  // sort order.
+  const [kindFilter, setKindFilter] = useState<"all" | "prompt" | "code">("all");
+  const [sort, setSort] = useState<SortKey>("recent");
   const [showForm, setShowForm] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -188,6 +209,7 @@ export function SnippetsDashboard() {
         language?: string;
         tag?: string;
         searchMode?: string;
+        sort?: string;
       } = {};
       if (debouncedSearch) {
         params.search = debouncedSearch;
@@ -195,6 +217,7 @@ export function SnippetsDashboard() {
       }
       if (language) params.language = language;
       if (activeTag) params.tag = activeTag;
+      if (sort !== "recent") params.sort = sort;
 
       const data = await getSnippets(params);
       // Ignore this response if a newer fetch has started since.
@@ -206,7 +229,7 @@ export function SnippetsDashboard() {
     } finally {
       if (seq === fetchSeq.current) setIsLoading(false);
     }
-  }, [debouncedSearch, language, activeTag, searchMode, dropPendingDeletes]);
+  }, [debouncedSearch, language, activeTag, searchMode, sort, dropPendingDeletes]);
 
   // Fetch all snippets for tag cloud
   const fetchAllSnippets = useCallback(async () => {
@@ -319,13 +342,23 @@ export function SnippetsDashboard() {
     };
   }, [allSnippets, allTags]);
 
+  // Counts for the kind quick-filter, over the current server-filtered results
+  // (i.e. what the search/language/tag query returned), so the segmented control
+  // reflects what's actually reachable right now.
+  const kindCounts = useMemo(() => {
+    let code = 0;
+    for (const s of snippets) if (s.kind === "code") code++;
+    return { all: snippets.length, code, prompt: snippets.length - code };
+  }, [snippets]);
+
   // Client-side filters layered on top of the server-side search/language/tag.
   const visible = useMemo(() => {
     let list = snippets;
+    if (kindFilter !== "all") list = list.filter((s) => s.kind === kindFilter);
     if (favoritesOnly) list = list.filter((s) => s.favorite);
     if (activeModel) list = list.filter((s) => s.model === activeModel);
     return list;
-  }, [snippets, favoritesOnly, activeModel]);
+  }, [snippets, kindFilter, favoritesOnly, activeModel]);
 
   const detailSnippet = useMemo(
     () =>
@@ -436,6 +469,25 @@ export function SnippetsDashboard() {
     setSnippets((prev) => prev.map(bump));
     setAllSnippets((prev) => prev.map(bump));
     void recordCopy(id);
+  };
+
+  // Copy an entry chosen from the command palette. A prompt with {{variables}}
+  // opens the fill dialog first (same as copying from a card/detail); anything
+  // else is copied straight to the clipboard.
+  const handlePaletteCopy = async (snippet: Snippet) => {
+    const hasVars =
+      snippet.kind !== "code" && extractVars(snippet.code).length > 0;
+    if (hasVars) {
+      setFillTarget(snippet);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(snippet.code);
+      handleCopied(snippet.id);
+    } catch (err) {
+      console.error("Copy failed:", err);
+      showError("Couldn't copy — the clipboard may be blocked.");
+    }
   };
 
   const handleModelClick = (model: string) =>
@@ -616,6 +668,8 @@ export function SnippetsDashboard() {
     showForm ||
     showSettings ||
     showTrash ||
+    showPalette ||
+    fillTarget !== null ||
     detailId !== null ||
     dbReady === false;
 
@@ -643,6 +697,14 @@ export function SnippetsDashboard() {
         return;
       }
 
+      // Cmd/Ctrl+K toggles the command palette. Handled before the modal guard
+      // so it also closes the palette itself.
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+        return;
+      }
+
       // Don't fire creation/search shortcuts while a dialog is open.
       if (anyModalOpen) return;
 
@@ -653,8 +715,8 @@ export function SnippetsDashboard() {
         return;
       }
 
-      // Cmd/Ctrl+K or "/" — focus the search box.
-      if ((mod && e.key.toLowerCase() === "k") || (e.key === "/" && !typing)) {
+      // "/" — focus the search box.
+      if (e.key === "/" && !typing) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
@@ -744,6 +806,59 @@ export function SnippetsDashboard() {
               <span className="font-semibold text-foreground">{stats.tags}</span>{" "}
               tag{stats.tags !== 1 ? "s" : ""}
             </span>
+          </div>
+        )}
+
+        {dbReady && stats.total > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            {/* Kind quick-filter: All / Prompts / Code, with live counts. */}
+            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 text-sm">
+              {(
+                [
+                  { key: "all", label: "All", count: kindCounts.all },
+                  { key: "prompt", label: "Prompts", count: kindCounts.prompt },
+                  { key: "code", label: "Code", count: kindCounts.code },
+                ] as const
+              ).map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setKindFilter(key)}
+                  className={`rounded-md px-3 py-1 font-medium transition-colors ${
+                    kindFilter === key
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                  <span
+                    className={`ml-1.5 text-xs ${
+                      kindFilter === key
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground/70"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Sort order (server-side). */}
+            <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <ArrowDownUp className="h-3.5 w-3.5" />
+              <span className="sr-only">Sort by</span>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="rounded-lg border border-border bg-card px-2 py-1 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
 
@@ -883,6 +998,23 @@ export function SnippetsDashboard() {
             </div>
           ))}
         </div>
+      )}
+
+      <CommandPalette
+        open={showPalette}
+        onOpenChange={setShowPalette}
+        snippets={allSnippets}
+        onCopy={handlePaletteCopy}
+      />
+
+      {fillTarget && (
+        <FillVarsDialog
+          uuid={fillTarget.uuid}
+          title={fillTarget.title}
+          code={fillTarget.code}
+          onClose={() => setFillTarget(null)}
+          onCopied={() => handleCopied(fillTarget.id)}
+        />
       )}
 
       {showTrash && (

@@ -260,7 +260,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_all_snippets(&self, search: Option<&str>, language: Option<&str>, tag: Option<&str>, search_mode: Option<&str>) -> Result<Vec<Snippet>> {
+    pub fn get_all_snippets(&self, search: Option<&str>, language: Option<&str>, tag: Option<&str>, search_mode: Option<&str>, sort: Option<&str>) -> Result<Vec<Snippet>> {
         let conn = self.conn.lock().unwrap();
 
         // `deleted = 0` hides soft-deleted (tombstoned) rows, which exist only
@@ -312,8 +312,18 @@ impl Database {
             }
         }
 
-        // Pinned (favorite) snippets float to the top, newest first within each group.
-        sql.push_str(" ORDER BY favorite DESC, created_at DESC");
+        // Pinned (favorite) snippets always float to the top; the rest of the
+        // order depends on the requested sort (default newest-first). The key is
+        // mapped to a fixed fragment (never interpolated) so it's injection-safe,
+        // and it mirrors the web SORT_ORDER map in app/api/snippets/route.ts.
+        let order = match sort.unwrap_or("recent") {
+            "most-used" => "favorite DESC, copy_count DESC, created_at DESC",
+            "recently-used" => "favorite DESC, last_used_at DESC, created_at DESC",
+            "alpha" => "favorite DESC, title COLLATE NOCASE ASC",
+            _ => "favorite DESC, created_at DESC",
+        };
+        sql.push_str(" ORDER BY ");
+        sql.push_str(order);
 
         let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
 
@@ -667,14 +677,14 @@ mod sqli_tests {
 
         for p in PAYLOADS {
             // Every filter dimension, plus a malicious search_mode.
-            db.get_all_snippets(Some(p), None, None, Some("all")).unwrap();
-            db.get_all_snippets(None, Some(p), None, None).unwrap();
-            db.get_all_snippets(None, None, Some(p), None).unwrap();
-            db.get_all_snippets(Some(p), Some(p), Some(p), Some(p)).unwrap();
+            db.get_all_snippets(Some(p), None, None, Some("all"), None).unwrap();
+            db.get_all_snippets(None, Some(p), None, None, None).unwrap();
+            db.get_all_snippets(None, None, Some(p), None, None).unwrap();
+            db.get_all_snippets(Some(p), Some(p), Some(p), Some(p), Some(p)).unwrap();
             assert!(table_exists(&db), "table dropped by read payload {p:?}");
         }
         // Both seed rows survive every payload.
-        assert_eq!(db.get_all_snippets(None, None, None, None).unwrap().len(), 2);
+        assert_eq!(db.get_all_snippets(None, None, None, None, None).unwrap().len(), 2);
     }
 
     #[test]
@@ -712,7 +722,7 @@ mod sqli_tests {
 
         // The DROP string was stored literally — we can find it by title search.
         let hits = db
-            .get_all_snippets(Some("drop table snippets"), None, None, Some("title"))
+            .get_all_snippets(Some("drop table snippets"), None, None, Some("title"), None)
             .unwrap();
         assert!(
             hits.iter().any(|s| s.title.contains("DROP TABLE")),
@@ -720,7 +730,7 @@ mod sqli_tests {
         );
 
         // Seed + all payload rows + target row all still present.
-        let total = db.get_all_snippets(None, None, None, None).unwrap().len();
+        let total = db.get_all_snippets(None, None, None, None, None).unwrap().len();
         assert_eq!(total, 1 + PAYLOADS.len() + 1);
     }
 
@@ -760,7 +770,7 @@ mod sqli_tests {
         assert!(records.iter().any(|r| r.kind == "code"));
         let db2 = temp_db();
         db2.apply_sync_records(records).unwrap();
-        let synced = db2.get_all_snippets(None, None, None, None).unwrap();
+        let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
         assert!(synced.iter().any(|s| s.title == "snippet" && s.kind == "code"));
     }
 
@@ -770,9 +780,49 @@ mod sqli_tests {
         db.create_snippet(mk("alpha", "one")).unwrap();
         db.create_snippet(mk("beta", "two")).unwrap();
         // A search of "%" must NOT match everything — it's escaped to a literal %.
-        let pct = db.get_all_snippets(Some("%"), None, None, Some("all")).unwrap();
+        let pct = db.get_all_snippets(Some("%"), None, None, Some("all"), None).unwrap();
         assert_eq!(pct.len(), 0, "'%' acted as a wildcard instead of a literal");
-        let underscore = db.get_all_snippets(Some("_"), None, None, Some("all")).unwrap();
+        let underscore = db.get_all_snippets(Some("_"), None, None, Some("all"), None).unwrap();
         assert_eq!(underscore.len(), 0, "'_' acted as a wildcard instead of a literal");
+    }
+
+    #[test]
+    fn sort_orders_respect_pins_and_keys() {
+        let db = temp_db();
+        // Three rows with distinct titles; give one a higher copy_count and pin
+        // another so we can tell the sort keys apart.
+        let a = db.create_snippet(mk("banana", "1")).unwrap();
+        let b = db.create_snippet(mk("apple", "2")).unwrap();
+        let c = db.create_snippet(mk("cherry", "3")).unwrap();
+        // "apple" gets used the most; "cherry" is pinned.
+        db.record_copy(b.id).unwrap();
+        db.record_copy(b.id).unwrap();
+        db.set_favorite(c.id, true).unwrap();
+
+        // Alphabetical, but the pinned row still leads.
+        let alpha = db
+            .get_all_snippets(None, None, None, None, Some("alpha"))
+            .unwrap();
+        assert_eq!(alpha[0].title, "cherry", "pinned row must lead every sort");
+        assert_eq!(
+            alpha.iter().map(|s| s.title.clone()).collect::<Vec<_>>(),
+            vec!["cherry", "apple", "banana"],
+        );
+
+        // Most-used: pinned "cherry" leads, then the row with the most copies.
+        let most = db
+            .get_all_snippets(None, None, None, None, Some("most-used"))
+            .unwrap();
+        assert_eq!(most[0].title, "cherry");
+        assert_eq!(most[1].title, "apple");
+
+        // Unknown/garbage sort key falls back to newest-first (no error).
+        let fallback = db
+            .get_all_snippets(None, None, None, None, Some("'; DROP TABLE snippets; --"))
+            .unwrap();
+        assert!(table_exists(&db));
+        assert_eq!(fallback.len(), 3);
+        assert_eq!(fallback[0].title, "cherry", "pin still leads on fallback");
+        let _ = a;
     }
 }

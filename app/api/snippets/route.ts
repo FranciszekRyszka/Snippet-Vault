@@ -6,6 +6,17 @@ import { escapeLike, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
+// Sort key → a fixed ORDER BY fragment. Pinned (favorite) rows always lead so
+// pins stay on top in every mode. Keyed lookup (never interpolate the raw param)
+// keeps this injection-safe; an unknown key falls back to "recent". Kept
+// identical to the desktop mapping in src-tauri/src/db.rs.
+const SORT_ORDER: Record<string, string> = {
+  recent: "favorite DESC, created_at DESC",
+  "most-used": "favorite DESC, copy_count DESC, created_at DESC",
+  "recently-used": "favorite DESC, last_used_at DESC, created_at DESC",
+  alpha: "favorite DESC, title COLLATE NOCASE ASC",
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const language = searchParams.get("language");
@@ -57,8 +68,10 @@ export async function GET(request: Request) {
       }
     }
 
-    // Pinned (favorite) snippets float to the top, newest first within each group.
-    query += " ORDER BY favorite DESC, created_at DESC";
+    // Pinned (favorite) snippets float to the top; the rest of the order depends
+    // on the requested sort (default newest-first). Unknown keys fall back safely.
+    const sort = searchParams.get("sort") || "recent";
+    query += ` ORDER BY ${SORT_ORDER[sort] ?? SORT_ORDER.recent}`;
 
     const stmt = db.prepare(query);
     const rows = stmt.all(...params) as Record<string, unknown>[];

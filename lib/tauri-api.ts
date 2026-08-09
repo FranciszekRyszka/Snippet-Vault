@@ -215,6 +215,7 @@ export async function getSnippets(params?: {
   language?: string;
   tag?: string;
   searchMode?: string;
+  sort?: string;
 }): Promise<Snippet[]> {
   if (await useLocalDb()) {
     return invoke<Snippet[]>("get_snippets", {
@@ -222,6 +223,7 @@ export async function getSnippets(params?: {
       language: params?.language || null,
       tag: params?.tag || null,
       searchMode: params?.searchMode || null,
+      sort: params?.sort || null,
     });
   }
 
@@ -232,6 +234,7 @@ export async function getSnippets(params?: {
   }
   if (params?.language) searchParams.set("language", params.language);
   if (params?.tag) searchParams.set("tag", params.tag);
+  if (params?.sort) searchParams.set("sort", params.sort);
 
   const qs = searchParams.toString();
   const res = await apiFetch(`/api/snippets${qs ? `?${qs}` : ""}`);

@@ -13,6 +13,25 @@ ships.
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-08-09
+
+### Added
+- **Command palette (Cmd/Ctrl-K).** A quick launcher to fuzzy-search your whole
+  library by title, tag, language, or model and copy an entry without opening the
+  full view. Selecting a prompt that has `{{variables}}` opens the fill-in dialog
+  first, just like copying from a card. (Ctrl/⌘-K now opens the palette; press
+  `/` to jump to the search box.)
+- **Kind quick-filter.** An **All / Prompts / Code** segmented control with live
+  counts, to narrow the grid to one entry type at a glance.
+- **Sort options.** Sort the library by **Newest** (default), **Most used**,
+  **Recently used**, or **A–Z**. Pinned entries still lead every order. Applied
+  identically on the desktop and web/server backends.
+
+### Changed
+- **Prompt variables now remember their last-used values.** The fill-in dialog
+  pre-fills each `{{variable}}` with what you entered last time for that prompt
+  (stored locally per entry), so re-running a prompt is faster.
+
 ### Security
 - Waived three newly-disclosed **build-time-only** advisories in the CSS
   toolchain (`postcss` and `nanoid`, reachable only via the build-time CSS
@@ -203,7 +222,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...v2.4.0
 [2.3.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.1...v2.3.2

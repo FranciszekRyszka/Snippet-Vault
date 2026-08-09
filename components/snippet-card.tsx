@@ -295,6 +295,7 @@ export function SnippetCard({
       </article>
       {showFill && (
         <FillVarsDialog
+          uuid={snippet.uuid}
           title={snippet.title}
           code={snippet.code}
           onClose={() => setShowFill(false)}
@@ -362,6 +363,7 @@ export function SnippetCard({
     </article>
     {showFill && (
       <FillVarsDialog
+        uuid={snippet.uuid}
         title={snippet.title}
         code={snippet.code}
         onClose={() => setShowFill(false)}
