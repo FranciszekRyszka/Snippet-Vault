@@ -24,6 +24,8 @@ import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { exportSnippet } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
+import { DiffBlock } from "./diff-block";
+import { diffLines, diffStats } from "@/lib/diff";
 import { getRevisions, type Snippet, type SnippetRevision } from "@/lib/tauri-api";
 
 type SnippetDetailProps = {
@@ -78,6 +80,7 @@ export function SnippetDetail({
   const [revsLoading, setRevsLoading] = useState(false);
   const [revsError, setRevsError] = useState<string | null>(null);
   const [expandedRev, setExpandedRev] = useState<number | null>(null);
+  const [revViewMode, setRevViewMode] = useState<"diff" | "full">("diff");
   const [restoringId, setRestoringId] = useState<number | null>(null);
 
   const loadRevisions = useCallback(async () => {
@@ -307,7 +310,7 @@ export function SnippetDetail({
                             )
                           }
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                          title="Preview this version"
+                          title="Compare this version with the current one"
                         >
                           <ChevronDown
                             className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
@@ -336,9 +339,60 @@ export function SnippetDetail({
                       </div>
                       {expandedRev === rev.id && (
                         <div className="border-t border-border p-3">
-                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs text-foreground">
-                            {rev.code}
-                          </pre>
+                          {(() => {
+                            const { added, removed } = diffStats(
+                              diffLines(rev.code, snippet.code)
+                            );
+                            const unchanged = added === 0 && removed === 0;
+                            return (
+                              <>
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                  <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
+                                    {(["diff", "full"] as const).map((mode) => (
+                                      <button
+                                        key={mode}
+                                        onClick={() => setRevViewMode(mode)}
+                                        className={`rounded px-2 py-0.5 font-medium capitalize transition-colors ${
+                                          revViewMode === mode
+                                            ? "bg-primary text-primary-foreground"
+                                            : "text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        {mode === "diff" ? "Diff" : "Full text"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {revViewMode === "diff" && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {unchanged ? (
+                                        "No changes from the current version"
+                                      ) : (
+                                        <>
+                                          vs current:{" "}
+                                          <span className="text-emerald-600 dark:text-emerald-400">
+                                            +{added}
+                                          </span>{" "}
+                                          <span className="text-rose-600 dark:text-rose-400">
+                                            −{removed}
+                                          </span>
+                                        </>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                {revViewMode === "diff" ? (
+                                  <DiffBlock
+                                    oldText={rev.code}
+                                    newText={snippet.code}
+                                  />
+                                ) : (
+                                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs text-foreground">
+                                    {rev.code}
+                                  </pre>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                     </li>

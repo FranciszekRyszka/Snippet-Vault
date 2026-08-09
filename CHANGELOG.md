@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-08-09
+
+### Added
+- **Diff view in prompt history.** Expanding a past version in the **History**
+  section now shows a line-by-line **diff against the current version** (removed
+  lines in red, added in green) with a compact `+N −M` summary — so you can see
+  exactly what changed before restoring. A **Full text** toggle shows the raw
+  version instead.
+
 ## [2.7.0] — 2026-08-09
 
 ### Added
@@ -259,7 +268,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...v2.5.0
