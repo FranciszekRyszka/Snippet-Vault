@@ -16,8 +16,11 @@ auditConfig:
   ignoreGhsas:
     - GHSA-f88m-g3jw-g9cj # sharp: inherited libvips CVEs (Next image opt; images.unoptimized)
     - GHSA-6g55-p6wh-862q # postcss: arbitrary file read (build-time CSS, Next-bundled)
+    - GHSA-fxqj-rqcc-2cmp # postcss: incomplete fix of the above (build-time CSS, Next-bundled)
     - GHSA-r28c-9q8g-f849 # postcss: source-map path traversal (build-time CSS)
     - GHSA-qx2v-qp2m-jg93 # postcss: XSS via unescaped </style> (build-time CSS)
+    - GHSA-28wg-ghj8-5hjv # nanoid: non-secure generator loop (only via postcss; build-time CSS)
+    - GHSA-2v37-7h3g-55p8 # nanoid: custom generator loop (only via postcss; build-time CSS)
     - GHSA-48c2-rrv3-qjmp # yaml: stack overflow parsing config (tailwind build)
     - GHSA-c2c7-rcm5-vvqj # picomatch: ReDoS (tailwind glob, build-time)
     - GHSA-3v7f-55p6-f55p # picomatch: method injection (tailwind glob, build-time)

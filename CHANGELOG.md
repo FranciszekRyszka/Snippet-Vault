@@ -13,6 +13,13 @@ ships.
 
 ## [Unreleased]
 
+### Security
+- Waived three newly-disclosed **build-time-only** advisories in the CSS
+  toolchain (`postcss` and `nanoid`, reachable only via the build-time CSS
+  pipeline — never at runtime) so `pnpm audit --prod` passes again. The audit
+  now also re-runs when `pnpm-workspace.yaml` (where the waivers live) changes.
+  Runtime-reachable dependencies remain un-waived and still fail CI.
+
 ## [2.4.0] — 2026-08-09
 
 ### Added
