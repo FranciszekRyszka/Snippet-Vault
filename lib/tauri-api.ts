@@ -424,3 +424,18 @@ export async function restoreFromBackup(path: string): Promise<void> {
 export async function openBackupsDir(): Promise<void> {
   await invoke("open_backups_dir");
 }
+
+// Opt-in automatic-backup settings: whether to snapshot on launch (at most once
+// a day) and how many snapshots to keep.
+export type BackupSettings = { auto_backup: boolean; keep: number };
+
+export async function getBackupSettings(): Promise<BackupSettings> {
+  return invoke<BackupSettings>("get_backup_settings");
+}
+
+export async function setBackupSettings(
+  autoBackup: boolean,
+  keep?: number
+): Promise<void> {
+  await invoke("set_backup_settings", { autoBackup, keep: keep ?? null });
+}

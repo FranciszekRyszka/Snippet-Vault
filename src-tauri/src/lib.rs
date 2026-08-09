@@ -29,6 +29,18 @@ struct AppConfig {
     db_path: Option<String>,
     #[serde(default)]
     remote: Option<RemoteConfig>,
+    /// Opt-in: write a snapshot into the backups folder on launch (at most once a
+    /// day). Off by default.
+    #[serde(default)]
+    auto_backup: bool,
+    /// How many snapshots to keep when pruning. 0 means "unset" → the default.
+    #[serde(default)]
+    backup_keep: u32,
+}
+
+/// Default number of rotating snapshots to keep.
+fn default_backup_keep() -> u32 {
+    10
 }
 
 /// Reported to the frontend on startup to decide whether to show first-run setup.
@@ -161,6 +173,41 @@ fn backup_timestamp() -> String {
     chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
+/// Whether a snapshot was written in the last 24 hours — used to throttle the
+/// opt-in launch backup to at most once a day.
+fn backed_up_within_24h(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    let now = std::time::SystemTime::now();
+    entries.flatten().any(|e| {
+        let is_snapshot = e
+            .file_name()
+            .to_str()
+            .map(|n| n.starts_with("snipvault-") && n.ends_with(".db"))
+            .unwrap_or(false);
+        is_snapshot
+            && e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| now.duration_since(t).ok())
+                .map(|age| age.as_secs() < 24 * 3600)
+                .unwrap_or(false)
+    })
+}
+
+/// Write a timestamped snapshot of `db` into the backups folder and prune to the
+/// newest `keep`. Shared by the manual command and the launch auto-backup.
+fn write_snapshot(db: &Database, keep: u32) -> Result<PathBuf, String> {
+    let dir = backups_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = dir.join(format!("snipvault-{}.db", backup_timestamp()));
+    db.backup_to(&dest).map_err(|e| e.to_string())?;
+    prune_backups(&dir, keep.max(1) as usize);
+    Ok(dest)
+}
+
 /// Keep only the newest `keep` snapshots in `dir`, deleting older ones. Names
 /// sort chronologically, so ascending order puts the oldest first.
 fn prune_backups(dir: &Path, keep: usize) {
@@ -202,12 +249,42 @@ fn get_backups_dir() -> Result<String, String> {
 fn backup_to_folder(state: State<Mutex<AppState>>, keep: Option<u32>) -> Result<String, String> {
     let s = state.lock().map_err(|e| e.to_string())?;
     let db = s.db.as_ref().ok_or("Database not initialized")?;
-    let dir = backups_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let dest = dir.join(format!("snipvault-{}.db", backup_timestamp()));
-    db.backup_to(&dest).map_err(|e| e.to_string())?;
-    prune_backups(&dir, keep.unwrap_or(10).max(1) as usize);
+    let keep = keep.unwrap_or_else(default_backup_keep);
+    let dest = write_snapshot(db, keep)?;
     Ok(dest.to_string_lossy().into_owned())
+}
+
+/// The opt-in automatic-backup settings, for the Settings UI.
+#[derive(Serialize)]
+struct BackupSettings {
+    auto_backup: bool,
+    keep: u32,
+}
+
+#[tauri::command]
+fn get_backup_settings() -> BackupSettings {
+    let cfg = load_config();
+    BackupSettings {
+        auto_backup: cfg.auto_backup,
+        keep: if cfg.backup_keep == 0 {
+            default_backup_keep()
+        } else {
+            cfg.backup_keep
+        },
+    }
+}
+
+/// Enable/disable the launch auto-backup and set how many snapshots to keep.
+#[tauri::command]
+fn set_backup_settings(auto_backup: bool, keep: Option<u32>) -> Result<(), String> {
+    let mut cfg = load_config();
+    cfg.auto_backup = auto_backup;
+    cfg.backup_keep = match keep {
+        Some(k) => k.max(1),
+        None if cfg.backup_keep == 0 => default_backup_keep(),
+        None => cfg.backup_keep,
+    };
+    save_config(&cfg)
 }
 
 /// Restore the whole database from a backup file, replacing the current
@@ -312,13 +389,13 @@ fn get_remote_config() -> Result<Option<RemoteConfig>, String> {
         // blank the file copy. If the store is unavailable, leave it in the file
         // so sync keeps working. Either way return it so this session works.
         if store_token_in_keyring(&remote.token) {
-            let migrated = AppConfig {
-                db_path: cfg.db_path,
-                remote: Some(RemoteConfig {
-                    url: remote.url.clone(),
-                    token: String::new(),
-                }),
-            };
+            // Re-load and edit in place so other fields (db_path, backup
+            // settings) are preserved, then blank just the file's token copy.
+            let mut migrated = load_config();
+            migrated.remote = Some(RemoteConfig {
+                url: remote.url.clone(),
+                token: String::new(),
+            });
             let _ = save_config(&migrated);
         }
     }
@@ -479,6 +556,17 @@ pub fn run() {
     if let Some(path) = startup_path {
         if path.exists() {
             if let Ok(db) = Database::open(&path) {
+                // Opt-in launch backup: write one snapshot if enabled and none
+                // was taken in the last day. Best-effort — a backup failure must
+                // never block the app from starting.
+                if cfg.auto_backup && !backed_up_within_24h(&backups_dir()) {
+                    let keep = if cfg.backup_keep == 0 {
+                        default_backup_keep()
+                    } else {
+                        cfg.backup_keep
+                    };
+                    let _ = write_snapshot(&db, keep);
+                }
                 app_state.db = Some(db);
                 // Persist the path if it was only inferred (no config yet),
                 // keeping any other fields already in the config.
@@ -513,6 +601,8 @@ pub fn run() {
             backup_database,
             get_backups_dir,
             backup_to_folder,
+            get_backup_settings,
+            set_backup_settings,
             restore_from_backup,
             open_backups_dir,
             get_remote_config,

@@ -23,7 +23,10 @@ ships.
   are kept, older ones pruned), **Open folder** reveals it in the file manager,
   and **Restore…** replaces your current library from a chosen backup — the file
   is validated as a SnipVault database first, so an unrelated or corrupt file
-  can't clobber your data.
+  can't clobber your data. An opt-in **"back up on launch"** toggle writes a
+  snapshot automatically (at most once a day). The self-hosted **server** can be
+  backed up the same way — see `docs/self-hosting.md` ("Backing up the server")
+  and the commented **`backup`** sidecar in `docker-compose.yml`.
 
 ### Security
 - **Sync token moved to the OS credential store.** On the desktop the sync

@@ -23,6 +23,8 @@ import {
   backupToFolder,
   restoreFromBackup,
   openBackupsDir,
+  getBackupSettings,
+  setBackupSettings,
   getSyncServer,
   saveSyncServer,
   removeSyncServer,
@@ -49,6 +51,7 @@ type SettingsDialogProps = {
 export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [backupsDir, setBackupsDir] = useState<string | null>(null);
+  const [autoBackup, setAutoBackup] = useState(false);
   const [busy, setBusy] = useState<
     "change" | "backup" | "folder-backup" | "restore" | null
   >(null);
@@ -78,6 +81,9 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   useEffect(() => {
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
     getBackupsDir().then(setBackupsDir).catch(() => setBackupsDir(null));
+    getBackupSettings()
+      .then((s) => setAutoBackup(s.auto_backup))
+      .catch(() => setAutoBackup(false));
     getAppVersion().then(setVersion).catch(() => setVersion(""));
     setAutoCheck(isAutoUpdateEnabled());
     getSyncServer()
@@ -275,6 +281,17 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
     try {
       await openBackupsDir();
     } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Toggle the opt-in launch backup. Optimistic; reverts on failure.
+  const toggleAutoBackup = async (enabled: boolean) => {
+    setAutoBackup(enabled);
+    try {
+      await setBackupSettings(enabled);
+    } catch (err) {
+      setAutoBackup(!enabled);
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -523,6 +540,16 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
                 Restore…
               </button>
             </div>
+
+            <label className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={autoBackup}
+                onChange={(e) => toggleAutoBackup(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Automatically back up on launch (at most once a day)
+            </label>
           </div>
 
           <div className="border-t border-border pt-5">
