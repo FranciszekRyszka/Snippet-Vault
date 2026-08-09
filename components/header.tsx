@@ -9,6 +9,7 @@ import {
   Upload,
   Download,
   Trash2,
+  BarChart3,
   RefreshCw,
   Loader2,
   CloudOff,
@@ -89,6 +90,7 @@ export function Header({
   onImport,
   onExportLibrary,
   onOpenTrash,
+  onOpenInsights,
   onOpenSettings,
   syncEnabled,
   onSyncNow,
@@ -100,6 +102,8 @@ export function Header({
   onExportLibrary?: () => void;
   // Opens the Trash (recently deleted) view.
   onOpenTrash?: () => void;
+  // Opens the usage insights panel.
+  onOpenInsights?: () => void;
   // Provided only in the desktop app; when set, a settings button is shown.
   onOpenSettings?: () => void;
   // Desktop + a configured sync server: show the last-synced indicator.
@@ -153,6 +157,16 @@ export function Header({
               aria-label="Export library"
             >
               <Download className="h-4 w-4" />
+            </button>
+          )}
+          {onOpenInsights && (
+            <button
+              onClick={onOpenInsights}
+              title="Usage insights"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Usage insights"
+            >
+              <BarChart3 className="h-4 w-4" />
             </button>
           )}
           {onOpenTrash && (

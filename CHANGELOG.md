@@ -13,6 +13,26 @@ ships.
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-08-09
+
+### Added
+- **Duplicate a prompt.** A new **Duplicate** action (on each card and in the
+  detail view) forks a prompt into a fresh entry titled "… (copy)" — its own
+  independent copy to use as a starting point for a variant. It gets a new
+  identity and its own history.
+- **Usage insights.** A new insights panel (chart icon in the header) summarizes
+  your library: total prompts and copies, plus **most used**, **recently used**,
+  and **never used** lists — surfacing the copy counts and last-used times the
+  app already tracks. Click any entry to open it.
+- **Drag-and-drop import.** Drop files anywhere on the window to import them —
+  JSON exports merge as before (a whole library merges by id; single/multiple
+  prompts are created), and `.md` / `.txt` files each become a new prompt (the
+  filename is the title). You can also now select **multiple files** at once in
+  the Import picker.
+- **Copy as Markdown.** A new action in the detail view copies a prompt as a
+  Markdown heading + body, or a code snippet as a language-tagged fenced code
+  block — ready to paste into docs, issues, or chat.
+
 ## [2.8.0] — 2026-08-09
 
 ### Added
@@ -268,7 +288,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...v2.6.0

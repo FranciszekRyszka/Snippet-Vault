@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   X,
   Copy,
+  CopyPlus,
   Check,
   Download,
   Pencil,
@@ -17,6 +18,7 @@ import {
   RotateCcw,
   Loader2,
   ChevronDown,
+  FileCode2,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
@@ -26,6 +28,7 @@ import { exportSnippet } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { DiffBlock } from "./diff-block";
 import { diffLines, diffStats } from "@/lib/diff";
+import { toMarkdown } from "@/lib/to-markdown";
 import { getRevisions, type Snippet, type SnippetRevision } from "@/lib/tauri-api";
 
 type SnippetDetailProps = {
@@ -41,6 +44,7 @@ type SnippetDetailProps = {
   // Restore the snippet to a past version (writes it back as a normal edit,
   // which itself captures the current state). Resolves once reloaded.
   onRestoreRevision: (snippet: Snippet, revision: SnippetRevision) => Promise<void>;
+  onDuplicate: (snippet: Snippet) => void;
 };
 
 function formatDateTime(value: string | null): string {
@@ -68,8 +72,10 @@ export function SnippetDetail({
   onCopied,
   onExported,
   onRestoreRevision,
+  onDuplicate,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedMd, setCopiedMd] = useState(false);
   const [showFill, setShowFill] = useState(false);
   const stats = getPromptStats(snippet.code);
   const tags = snippet.tags || [];
@@ -148,6 +154,18 @@ export function SnippetDetail({
       // Clipboard can be blocked (permissions/insecure context). Don't show a
       // false "copied" state; just log it.
       console.error("Copy failed:", err);
+    }
+  };
+
+  // Copy the snippet formatted as Markdown (code → fenced block; prompt →
+  // heading + body). Doesn't count as a usage copy — it's a different action.
+  const handleCopyMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(toMarkdown(snippet));
+      setCopiedMd(true);
+      setTimeout(() => setCopiedMd(false), 2000);
+    } catch (err) {
+      console.error("Copy as Markdown failed:", err);
     }
   };
 
@@ -416,6 +434,25 @@ export function SnippetDetail({
           >
             <Trash2 className="h-4 w-4" />
             Delete
+          </button>
+          <button
+            onClick={() => onDuplicate(snippet)}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <CopyPlus className="h-4 w-4" />
+            Duplicate
+          </button>
+          <button
+            onClick={handleCopyMarkdown}
+            title="Copy as Markdown"
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            {copiedMd ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <FileCode2 className="h-4 w-4" />
+            )}
+            {copiedMd ? "Copied" : "Markdown"}
           </button>
           <button
             onClick={() => onExported(snippet, exportSnippet(snippet))}

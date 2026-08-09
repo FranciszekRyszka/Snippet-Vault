@@ -10,6 +10,7 @@ import { EmptyState } from "./empty-state";
 import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { TrashDialog } from "./trash-dialog";
+import { InsightsDialog } from "./insights-dialog";
 import { CommandPalette } from "./command-palette";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { extractVars } from "@/lib/prompt-vars";
@@ -41,7 +42,7 @@ import {
 } from "@/lib/tauri-api";
 import { runSync } from "@/hooks/use-sync";
 import { LANGUAGES } from "@/lib/languages";
-import { ArrowDownUp, Cpu, Loader2, X } from "lucide-react";
+import { ArrowDownUp, Cpu, Loader2, Upload, X } from "lucide-react";
 
 // Bottom-center toast stack: newest at the bottom, capped so a burst of exports
 // doesn't cover the screen. Beyond the cap the oldest toast is evicted.
@@ -68,6 +69,10 @@ export function SnippetsDashboard() {
   const [dbReady, setDbReady] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+  // Drag-and-drop file import: whether a file is being dragged over the window.
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   // Cmd/Ctrl-K quick launcher, and the prompt whose variables the launcher (or a
   // detail copy) is currently filling before copying.
   const [showPalette, setShowPalette] = useState(false);
@@ -361,11 +366,16 @@ export function SnippetsDashboard() {
     return list;
   }, [snippets, kindFilter, favoritesOnly, activeModel]);
 
-  const detailSnippet = useMemo(
-    () =>
-      detailId === null ? null : snippets.find((s) => s.id === detailId) ?? null,
-    [detailId, snippets]
-  );
+  const detailSnippet = useMemo(() => {
+    if (detailId === null) return null;
+    // Prefer the current (filtered) list, but fall back to the full library so
+    // opening an entry from Insights still works when a filter would hide it.
+    return (
+      snippets.find((s) => s.id === detailId) ??
+      allSnippets.find((s) => s.id === detailId) ??
+      null
+    );
+  }, [detailId, snippets, allSnippets]);
 
   const handleSave = async (data: {
     title: string;
@@ -454,6 +464,30 @@ export function SnippetsDashboard() {
       showError(
         err instanceof Error ? err.message : "Couldn't restore that version."
       );
+    }
+  };
+
+  // Fork a prompt into a new entry (a fresh uuid, its own history). Handy as a
+  // starting point for a variant. The copy is a brand-new create, so it sorts to
+  // the top and opens nothing — just confirms with a toast.
+  const handleDuplicate = async (snip: Snippet) => {
+    try {
+      await createSnippet({
+        title: `${snip.title} (copy)`.slice(0, 255),
+        description: snip.description,
+        code: snip.code,
+        language: snip.language,
+        tags: snip.tags,
+        model: snip.model,
+        kind: snip.kind,
+      });
+      setDetailId(null);
+      await fetchSnippets();
+      await fetchAllSnippets();
+      showNotice(`Duplicated "${snip.title}".`);
+    } catch (err) {
+      console.error("Failed to duplicate snippet:", err);
+      showError(err instanceof Error ? err.message : "Couldn't duplicate the prompt.");
     }
   };
 
@@ -598,97 +632,156 @@ export function SnippetsDashboard() {
         typeof (r as Record<string, unknown>).updated_at === "string"
     );
 
-  // Import prompts from a JSON file. A whole-library export (records with uuids)
-  // is merged by uuid via the sync path; otherwise the file is treated as one or
-  // more content prompts, each imported independently — a failing item is
-  // skipped and tallied rather than aborting the whole import. The list is
-  // always refreshed afterward so successful items are visible.
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // let the same file be re-selected later
-    if (!file) return;
+  // Filename without its directory or extension — used as a title for plain-text
+  // imports.
+  const baseName = (name: string) =>
+    name
+      .replace(/^.*[/\\]/, "")
+      .replace(/\.[^.]+$/, "")
+      .trim();
+
+  // Import a single file. JSON is treated as an export — a whole-library file
+  // merges by uuid (dedupes on re-import); otherwise it's one or more content
+  // prompts, each imported independently. Any other file (.md / .txt / …) is
+  // imported as a single prompt with the file's text as its body. Returns
+  // tallies so a batch can show one combined summary. Throws only when a .json
+  // file is malformed.
+  const importOneFile = async (
+    file: File
+  ): Promise<{ imported: number; skipped: number; libraryApplied: number }> => {
+    const text = await file.text();
+    const looksJson = /\.json$/i.test(file.name) || /^\s*[[{]/.test(text);
+
+    if (looksJson) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        if (/\.json$/i.test(file.name)) {
+          throw new Error(`"${file.name}" isn't valid JSON.`);
+        }
+        parsed = undefined; // not really JSON — fall through to plain text
+      }
+
+      if (parsed !== undefined) {
+        // Library file: merge by uuid via the sync path.
+        if (isLibraryExport(parsed)) {
+          const applied = await importLibrary(parsed);
+          return { imported: 0, skipped: 0, libraryApplied: applied };
+        }
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        const validLanguages = new Set(LANGUAGES.map((l) => l.value));
+        let imported = 0;
+        let skipped = 0;
+        for (const item of items) {
+          if (
+            !item ||
+            typeof item.title !== "string" ||
+            !item.title.trim() ||
+            typeof item.code !== "string" ||
+            !item.code
+          ) {
+            skipped++;
+            continue;
+          }
+          // Normalize to the shape the web API enforces, so importing on the
+          // (more permissive) desktop backend can't store invalid rows.
+          const input: CreateSnippetInput = {
+            title: item.title.trim().slice(0, 255),
+            description:
+              typeof item.description === "string" ? item.description : "",
+            code: item.code,
+            language: validLanguages.has(item.language) ? item.language : "text",
+            tags: Array.isArray(item.tags)
+              ? item.tags
+                  .filter((t: unknown): t is string => typeof t === "string")
+                  .map((t: string) => t.trim().toLowerCase())
+                  .filter(Boolean)
+                  .slice(0, 20)
+              : [],
+            model:
+              typeof item.model === "string"
+                ? item.model.trim().slice(0, 100)
+                : "",
+            kind: item.kind === "code" ? "code" : "prompt",
+          };
+          try {
+            await createSnippet(input);
+            imported++;
+          } catch (itemErr) {
+            console.error("Failed to import one prompt:", itemErr);
+            skipped++;
+          }
+        }
+        return { imported, skipped, libraryApplied: 0 };
+      }
+    }
+
+    // Plain text (.md / .txt / …): a single prompt with the file's text as body.
+    if (!text.trim()) return { imported: 0, skipped: 1, libraryApplied: 0 };
+    await createSnippet({
+      title: (baseName(file.name) || "Imported prompt").slice(0, 255),
+      description: "",
+      code: text,
+      language: /\.(md|markdown)$/i.test(file.name) ? "markdown" : "text",
+      tags: [],
+      model: "",
+      kind: "prompt",
+    });
+    return { imported: 1, skipped: 0, libraryApplied: 0 };
+  };
+
+  // Import a batch of files (from the picker or a drop): process each, refresh
+  // once, and show a single combined summary.
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return;
     let imported = 0;
     let skipped = 0;
-    try {
-      const parsed = JSON.parse(await file.text());
-
-      // Library file: merge by uuid (dedupes on re-import) and stop here.
-      if (isLibraryExport(parsed)) {
-        try {
-          const applied = await importLibrary(parsed);
-          showNotice(
-            `Imported library — ${applied} ${
-              applied === 1 ? "entry" : "entries"
-            } added or updated.`
-          );
-        } catch (err) {
-          console.error("Library import failed:", err);
-          showError(
-            err instanceof Error ? err.message : "Couldn't import that library file."
-          );
-        }
-        return; // the finally below refreshes the lists
+    let libraryApplied = 0;
+    let failedFiles = 0;
+    for (const file of files) {
+      try {
+        const r = await importOneFile(file);
+        imported += r.imported;
+        skipped += r.skipped;
+        libraryApplied += r.libraryApplied;
+      } catch (err) {
+        console.error(`Import of ${file.name} failed:`, err);
+        failedFiles++;
       }
-
-      const items = Array.isArray(parsed) ? parsed : [parsed];
-      const validLanguages = new Set(LANGUAGES.map((l) => l.value));
-      for (const item of items) {
-        // Skip anything without a usable title and body. An empty-string title
-        // is invalid (the backend rejects it), so require non-empty after trim.
-        if (
-          !item ||
-          typeof item.title !== "string" ||
-          !item.title.trim() ||
-          typeof item.code !== "string" ||
-          !item.code
-        ) {
-          skipped++;
-          continue;
-        }
-        // Normalize to the same shape the web API enforces, so importing on the
-        // desktop (whose backend is more permissive) can't store invalid rows.
-        const input: CreateSnippetInput = {
-          title: item.title.trim().slice(0, 255),
-          description:
-            typeof item.description === "string" ? item.description : "",
-          code: item.code,
-          language: validLanguages.has(item.language) ? item.language : "text",
-          tags: Array.isArray(item.tags)
-            ? item.tags
-                .filter((t: unknown): t is string => typeof t === "string")
-                .map((t: string) => t.trim().toLowerCase())
-                .filter(Boolean)
-                .slice(0, 20)
-            : [],
-          model:
-            typeof item.model === "string" ? item.model.trim().slice(0, 100) : "",
-          kind: item.kind === "code" ? "code" : "prompt",
-        };
-        try {
-          await createSnippet(input);
-          imported++;
-        } catch (itemErr) {
-          console.error("Failed to import one prompt:", itemErr);
-          skipped++;
-        }
-      }
-      showNotice(
-        imported > 0
-          ? `Imported ${imported} prompt${imported !== 1 ? "s" : ""}${
-              skipped ? `, skipped ${skipped}` : ""
-            }.`
-          : skipped > 0
-            ? `No prompts imported (${skipped} skipped).`
-            : "No valid prompts found in that file."
-      );
-    } catch (err) {
-      // Only reached if the file itself isn't valid JSON.
-      console.error("Import failed:", err);
-      showError("Couldn't read that file — is it a valid JSON export?");
-    } finally {
-      await fetchSnippets();
-      await fetchAllSnippets();
     }
+    await fetchSnippets();
+    await fetchAllSnippets();
+
+    const parts: string[] = [];
+    if (libraryApplied)
+      parts.push(
+        `${libraryApplied} ${libraryApplied === 1 ? "entry" : "entries"} from a library file`
+      );
+    if (imported) parts.push(`${imported} prompt${imported !== 1 ? "s" : ""}`);
+    if (parts.length) {
+      showNotice(
+        `Imported ${parts.join(" and ")}${skipped ? `, skipped ${skipped}` : ""}.`
+      );
+    } else if (failedFiles) {
+      showError(
+        failedFiles === 1
+          ? "Couldn't import that file."
+          : `Couldn't import ${failedFiles} files.`
+      );
+    } else {
+      showNotice(
+        skipped
+          ? `No prompts imported (${skipped} skipped).`
+          : "No valid prompts found."
+      );
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = ""; // let the same file be re-selected later
+    await handleFiles(files);
   };
 
   const handleNewSnippet = useCallback(() => {
@@ -701,6 +794,7 @@ export function SnippetsDashboard() {
     showForm ||
     showSettings ||
     showTrash ||
+    showInsights ||
     showPalette ||
     fillTarget !== null ||
     detailId !== null ||
@@ -776,13 +870,63 @@ export function SnippetsDashboard() {
     favoritesOnly ||
     !!activeModel;
 
+  // Drag-and-drop import. A depth counter keeps the overlay stable across
+  // dragenter/leave on child elements (they'd otherwise flicker it). Only reacts
+  // when actual files are being dragged.
+  const isFileDrag = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types || []).includes("Files");
+
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (isFileDrag(e)) e.preventDefault();
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) handleFiles(files);
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-background"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragActive && (
+        <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center bg-primary/10 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-card px-10 py-8 text-center shadow-lg">
+            <Upload className="h-8 w-8 text-primary" />
+            <p className="text-base font-semibold text-foreground">
+              Drop to import
+            </p>
+            <p className="text-xs text-muted-foreground">
+              JSON exports merge by id · .md / .txt become new prompts
+            </p>
+          </div>
+        </div>
+      )}
       <Header
         onNewSnippet={handleNewSnippet}
         onImport={handleImportClick}
         onExportLibrary={handleExportLibrary}
         onOpenTrash={() => setShowTrash(true)}
+        onOpenInsights={() => setShowInsights(true)}
         onOpenSettings={desktop ? () => setShowSettings(true) : undefined}
         syncEnabled={syncEnabled}
         onSyncNow={runSyncAndReload}
@@ -791,7 +935,8 @@ export function SnippetsDashboard() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/json,.json"
+        multiple
+        accept=".json,.md,.markdown,.txt,application/json,text/markdown,text/plain"
         onChange={handleImportFile}
         className="hidden"
       />
@@ -952,6 +1097,7 @@ export function SnippetsDashboard() {
                   onOpen={(s) => setDetailId(s.id)}
                   onCopied={handleCopied}
                   onExported={handleExported}
+                  onDuplicate={handleDuplicate}
                 />
               ))}
             </div>
@@ -992,6 +1138,7 @@ export function SnippetsDashboard() {
           onCopied={handleCopied}
           onExported={handleExported}
           onRestoreRevision={handleRestoreRevision}
+          onDuplicate={handleDuplicate}
         />
       )}
 
@@ -1058,6 +1205,14 @@ export function SnippetsDashboard() {
             fetchSnippets();
             fetchAllSnippets();
           }}
+        />
+      )}
+
+      {showInsights && (
+        <InsightsDialog
+          snippets={allSnippets}
+          onClose={() => setShowInsights(false)}
+          onOpen={(s) => setDetailId(s.id)}
         />
       )}
 

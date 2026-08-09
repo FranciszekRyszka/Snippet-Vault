@@ -6,6 +6,7 @@ import {
   Trash2,
   Calendar,
   Copy,
+  CopyPlus,
   Check,
   Star,
   Download,
@@ -31,6 +32,7 @@ type SnippetCardProps = {
   onOpen: (snippet: Snippet) => void;
   onCopied: (id: number) => void;
   onExported: (snippet: Snippet, filename: string | null) => void;
+  onDuplicate: (snippet: Snippet) => void;
 };
 
 // Build a filename-safe slug from a title for exports.
@@ -88,6 +90,7 @@ export function SnippetCard({
   onOpen,
   onCopied,
   onExported,
+  onDuplicate,
 }: SnippetCardProps) {
   const [copied, setCopied] = useState(false);
   const [showFill, setShowFill] = useState(false);
@@ -159,6 +162,14 @@ export function SnippetCard({
         title={hasVars ? "Fill variables & copy" : "Copy prompt"}
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+      <button
+        onClick={() => onDuplicate(snippet)}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        aria-label="Duplicate prompt"
+        title="Duplicate as a new prompt"
+      >
+        <CopyPlus className="h-3.5 w-3.5" />
       </button>
       <button
         onClick={() => onExported(snippet, exportSnippet(snippet))}
