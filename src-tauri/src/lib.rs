@@ -1,7 +1,7 @@
 mod db;
 mod validation;
 
-use db::{Database, CreateSnippetInput, UpdateSnippetInput, Snippet, SyncRecord};
+use db::{Database, CreateSnippetInput, UpdateSnippetInput, Snippet, SnippetRevision, SyncRecord};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -480,6 +480,14 @@ fn update_snippet(state: State<Mutex<AppState>>, id: i64, input: UpdateSnippetIn
     db.update_snippet(id, input).map_err(|e| e.to_string())
 }
 
+/// Past versions of a snippet (by its stable `uuid`), newest first. Local-only.
+#[tauri::command]
+fn get_revisions(state: State<Mutex<AppState>>, uuid: String) -> Result<Vec<SnippetRevision>, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.get_revisions(&uuid).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn delete_snippet(state: State<Mutex<AppState>>, id: i64) -> Result<bool, String> {
     let state = state.lock().map_err(|e| e.to_string())?;
@@ -590,6 +598,7 @@ pub fn run() {
             get_deleted,
             create_snippet,
             update_snippet,
+            get_revisions,
             delete_snippet,
             set_favorite,
             record_copy,

@@ -93,9 +93,32 @@ function getDb(): Database.Database {
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_uuid ON snippets(uuid)"
   );
 
+  // Prompt history: an append-only log of prior versions, keyed by the snippet's
+  // stable `uuid`. Each edit captures the pre-edit state here (see the PUT
+  // route). Local to this database — not synced (append-only, no conflicts).
+  conn.exec(`
+    CREATE TABLE IF NOT EXISTS snippet_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      snippet_uuid TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      code TEXT NOT NULL,
+      language TEXT NOT NULL,
+      tags TEXT DEFAULT '[]',
+      model TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'prompt',
+      saved_at TEXT NOT NULL,
+      captured_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_revisions_uuid ON snippet_revisions(snippet_uuid, id);
+  `);
+
   connection = conn;
   return connection;
 }
+
+// How many past revisions to keep per snippet (older ones pruned on capture).
+export const REVISION_KEEP = 50;
 
 // Lazy handle: callers keep using `db.prepare(...)` / `db.exec(...)` unchanged,
 // but the underlying connection only opens on first property access.
@@ -150,4 +173,96 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;
+}
+
+// A past version of a snippet (prompt history). `saved_at` is the `updated_at`
+// the version carried while it was live.
+export type SnippetRevision = {
+  id: number;
+  title: string;
+  description: string;
+  code: string;
+  language: string;
+  tags: string[];
+  model: string;
+  kind: "prompt" | "code";
+  saved_at: string;
+};
+
+function rowToRevision(row: Record<string, unknown>): SnippetRevision {
+  return {
+    id: Number(row.id),
+    title: (row.title as string) ?? "",
+    description: (row.description as string) ?? "",
+    code: (row.code as string) ?? "",
+    language: (row.language as string) ?? "",
+    tags: parseTags(row.tags),
+    model: (row.model as string) ?? "",
+    kind: row.kind === "code" ? "code" : "prompt",
+    saved_at: (row.saved_at as string) ?? "",
+  };
+}
+
+// Save the current state of a snippet as a revision before an edit overwrites
+// it — unless the new values are identical (a no-op save shouldn't add history).
+// Prunes to the newest REVISION_KEEP. `current` is the live row; `next` is the
+// already-sanitized incoming values.
+export function captureRevisionIfChanged(
+  current: Record<string, unknown>,
+  next: {
+    title: string;
+    description: string;
+    code: string;
+    language: string;
+    tagsJson: string;
+    model: string;
+    kind: string;
+  }
+): void {
+  const uuid = (current.uuid as string) ?? "";
+  if (!uuid) return;
+  const unchanged =
+    ((current.title as string) ?? "") === next.title &&
+    ((current.description as string) ?? "") === next.description &&
+    ((current.code as string) ?? "") === next.code &&
+    ((current.language as string) ?? "") === next.language &&
+    ((current.tags as string) ?? "[]") === next.tagsJson &&
+    ((current.model as string) ?? "") === next.model &&
+    ((current.kind as string) ?? "prompt") === next.kind;
+  if (unchanged) return;
+  db.prepare(
+    `INSERT INTO snippet_revisions
+       (snippet_uuid, title, description, code, language, tags, model, kind, saved_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    uuid,
+    current.title,
+    (current.description as string) ?? "",
+    current.code,
+    current.language,
+    (current.tags as string) ?? "[]",
+    (current.model as string) ?? "",
+    (current.kind as string) ?? "prompt",
+    (current.updated_at as string) ?? ""
+  );
+  db.prepare(
+    `DELETE FROM snippet_revisions
+     WHERE snippet_uuid = ?
+       AND id NOT IN (
+         SELECT id FROM snippet_revisions WHERE snippet_uuid = ? ORDER BY id DESC LIMIT ?
+       )`
+  ).run(uuid, uuid, REVISION_KEEP);
+}
+
+// Past versions of the snippet with the given autoincrement id, newest first.
+export function getRevisionsForId(id: number): SnippetRevision[] {
+  const rows = db
+    .prepare(
+      `SELECT r.* FROM snippet_revisions r
+       JOIN snippets s ON s.uuid = r.snippet_uuid
+       WHERE s.id = ?
+       ORDER BY r.id DESC`
+    )
+    .all(id) as Record<string, unknown>[];
+  return rows.map(rowToRevision);
 }

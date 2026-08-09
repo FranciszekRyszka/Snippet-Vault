@@ -13,6 +13,17 @@ ships.
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-08-09
+
+### Added
+- **Prompt history (versioning).** Every edit now records the previous version,
+  so you can look back and roll forward. The detail view has a new **History**
+  section listing past versions with their save time — expand one to preview it,
+  or **Restore** to bring it back (restoring is itself an edit, so nothing is
+  lost). No-op saves don't add history, and the newest ~50 versions per prompt
+  are kept. History is stored locally in each database and is **not synced**, so
+  the newest-wins sync model is unchanged.
+
 ## [2.6.0] — 2026-08-09
 
 ### Added
@@ -248,7 +259,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.3.3...v2.4.0

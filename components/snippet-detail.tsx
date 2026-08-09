@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   X,
   Copy,
@@ -13,6 +13,10 @@ import {
   Hash,
   Code,
   Braces,
+  History,
+  RotateCcw,
+  Loader2,
+  ChevronDown,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
@@ -20,7 +24,7 @@ import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { exportSnippet } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
-import type { Snippet } from "@/lib/tauri-api";
+import { getRevisions, type Snippet, type SnippetRevision } from "@/lib/tauri-api";
 
 type SnippetDetailProps = {
   snippet: Snippet;
@@ -32,6 +36,9 @@ type SnippetDetailProps = {
   onModelClick: (model: string) => void;
   onCopied: (id: number) => void;
   onExported: (snippet: Snippet, filename: string | null) => void;
+  // Restore the snippet to a past version (writes it back as a normal edit,
+  // which itself captures the current state). Resolves once reloaded.
+  onRestoreRevision: (snippet: Snippet, revision: SnippetRevision) => Promise<void>;
 };
 
 function formatDateTime(value: string | null): string {
@@ -58,11 +65,50 @@ export function SnippetDetail({
   onModelClick,
   onCopied,
   onExported,
+  onRestoreRevision,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
   const [showFill, setShowFill] = useState(false);
   const stats = getPromptStats(snippet.code);
   const tags = snippet.tags || [];
+
+  // Prompt history (past versions). Loaded lazily when the panel is opened.
+  const [showHistory, setShowHistory] = useState(false);
+  const [revisions, setRevisions] = useState<SnippetRevision[] | null>(null);
+  const [revsLoading, setRevsLoading] = useState(false);
+  const [revsError, setRevsError] = useState<string | null>(null);
+  const [expandedRev, setExpandedRev] = useState<number | null>(null);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+
+  const loadRevisions = useCallback(async () => {
+    setRevsLoading(true);
+    setRevsError(null);
+    try {
+      setRevisions(await getRevisions(snippet));
+    } catch (err) {
+      setRevsError(
+        err instanceof Error ? err.message : "Couldn't load history."
+      );
+    } finally {
+      setRevsLoading(false);
+    }
+  }, [snippet]);
+
+  // Load (or refresh) history when the panel opens.
+  useEffect(() => {
+    if (showHistory) loadRevisions();
+  }, [showHistory, loadRevisions]);
+
+  const handleRestore = async (rev: SnippetRevision) => {
+    setRestoringId(rev.id);
+    try {
+      await onRestoreRevision(snippet, rev);
+      // The restore captured the prior state as a new revision — refresh.
+      await loadRevisions();
+    } finally {
+      setRestoringId(null);
+    }
+  };
 
   // Prompt variables ({{name}}) — prompts only; code snippets keep literal braces.
   const vars = useMemo(
@@ -219,6 +265,93 @@ export function SnippetDetail({
               <dd className="mt-0.5 text-sm text-foreground">{m.value}</dd>
             </div>
           ))}
+        </div>
+
+        {/* History (past versions) */}
+        <div className="border-t border-border px-5 py-4">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-primary"
+            aria-expanded={showHistory}
+          >
+            <History className="h-4 w-4" />
+            History
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground transition-transform ${
+                showHistory ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {showHistory && (
+            <div className="mt-3">
+              {revsLoading && revisions === null ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading history…
+                </p>
+              ) : revsError ? (
+                <p className="text-sm text-destructive">{revsError}</p>
+              ) : revisions && revisions.length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {revisions.map((rev) => (
+                    <li
+                      key={rev.id}
+                      className="rounded-lg border border-border bg-background"
+                    >
+                      <div className="flex items-center justify-between gap-2 p-3">
+                        <button
+                          onClick={() =>
+                            setExpandedRev((cur) =>
+                              cur === rev.id ? null : rev.id
+                            )
+                          }
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          title="Preview this version"
+                        >
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
+                              expandedRev === rev.id ? "rotate-180" : ""
+                            }`}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                            {rev.title || "(untitled)"}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatDateTime(rev.saved_at)}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => handleRestore(rev)}
+                          disabled={restoringId !== null}
+                          className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                        >
+                          {restoringId === rev.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          )}
+                          Restore
+                        </button>
+                      </div>
+                      {expandedRev === rev.id && (
+                        <div className="border-t border-border p-3">
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs text-foreground">
+                            {rev.code}
+                          </pre>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No past versions yet. Edits you make to this prompt will show up
+                  here so you can compare and roll back.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions */}

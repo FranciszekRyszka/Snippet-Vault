@@ -254,6 +254,32 @@ export async function getDeletedSnippets(): Promise<Snippet[]> {
   return res.json();
 }
 
+// A past version of a snippet (prompt history). `saved_at` is the version's own
+// last-saved time (its `updated_at` while it was live).
+export type SnippetRevision = {
+  id: number;
+  title: string;
+  description: string;
+  code: string;
+  language: string;
+  tags: string[];
+  model: string;
+  kind: SnippetKind;
+  saved_at: string;
+};
+
+// Past versions of a snippet, newest first. History is local to each database
+// (not synced). Desktop looks up by the stable uuid; web by the row id.
+export async function getRevisions(snippet: Snippet): Promise<SnippetRevision[]> {
+  if (await useLocalDb()) {
+    return invoke<SnippetRevision[]>("get_revisions", { uuid: snippet.uuid });
+  }
+
+  const res = await apiFetch(`/api/snippets/${snippet.id}/revisions`);
+  await throwIfNotOk(res, "Failed to load revisions");
+  return res.json();
+}
+
 export async function createSnippet(input: CreateSnippetInput): Promise<Snippet> {
   if (await useLocalDb()) {
     return invoke<Snippet>("create_snippet", { input });

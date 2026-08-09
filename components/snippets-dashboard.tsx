@@ -36,6 +36,7 @@ import {
   type Snippet,
   type CreateSnippetInput,
   type SnippetKind,
+  type SnippetRevision,
   type SyncRecord,
 } from "@/lib/tauri-api";
 import { runSync } from "@/hooks/use-sync";
@@ -421,6 +422,38 @@ export function SnippetsDashboard() {
       showError(err instanceof Error ? err.message : "Failed to delete the prompt.");
       await fetchSnippets();
       await fetchAllSnippets();
+    }
+  };
+
+  // Restore a snippet to a past version: write the revision's content back as a
+  // normal update (which itself captures the current state as a new revision),
+  // then reload so the detail reflects it. Errors are surfaced, not thrown, so
+  // the detail's History panel can finish cleanly.
+  const handleRestoreRevision = async (
+    snip: Snippet,
+    rev: SnippetRevision
+  ) => {
+    try {
+      const updated = await updateSnippet(snip.id, {
+        title: rev.title,
+        description: rev.description,
+        code: rev.code,
+        language: rev.language,
+        tags: rev.tags,
+        model: rev.model,
+        kind: rev.kind,
+      });
+      if (updated === null) {
+        throw new Error("This prompt no longer exists — it may have been deleted.");
+      }
+      await fetchSnippets();
+      await fetchAllSnippets();
+      showNotice("Restored an earlier version.");
+    } catch (err) {
+      console.error("Failed to restore revision:", err);
+      showError(
+        err instanceof Error ? err.message : "Couldn't restore that version."
+      );
     }
   };
 
@@ -958,6 +991,7 @@ export function SnippetsDashboard() {
           }}
           onCopied={handleCopied}
           onExported={handleExported}
+          onRestoreRevision={handleRestoreRevision}
         />
       )}
 

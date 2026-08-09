@@ -161,6 +161,43 @@ test("soft delete hides the row from the list", async () => {
   assert.ok(!list.body.some((s) => s.id === id), "deleted row must not appear");
 });
 
+test("edits capture revisions; no-op saves don't", async () => {
+  const created = await create({ title: "rev-v1", code: "body one" });
+  const id = created.body.id;
+  createdIds.push(id);
+
+  const put = (title, code) =>
+    api(`/api/snippets/${id}`, {
+      method: "PUT",
+      headers: json,
+      body: JSON.stringify({ title, code, language: "text" }),
+    });
+
+  // A fresh snippet has no history.
+  let revs = await api(`/api/snippets/${id}/revisions`, { headers: auth });
+  assert.equal(revs.status, 200);
+  assert.equal(revs.body.length, 0);
+
+  // First real edit captures the prior ("rev-v1") state.
+  await put("rev-v2", "body two");
+  revs = await api(`/api/snippets/${id}/revisions`, { headers: auth });
+  assert.equal(revs.body.length, 1);
+  assert.equal(revs.body[0].title, "rev-v1");
+  assert.equal(revs.body[0].code, "body one");
+
+  // A no-op save (identical content) adds nothing.
+  await put("rev-v2", "body two");
+  revs = await api(`/api/snippets/${id}/revisions`, { headers: auth });
+  assert.equal(revs.body.length, 1, "no-op save must not add a revision");
+
+  // A second edit captures "rev-v2", newest first.
+  await put("rev-v3", "body three");
+  revs = await api(`/api/snippets/${id}/revisions`, { headers: auth });
+  assert.equal(revs.body.length, 2);
+  assert.equal(revs.body[0].title, "rev-v2");
+  assert.equal(revs.body[1].title, "rev-v1");
+});
+
 test("sort orders by the requested key, with a safe fallback", async () => {
   // Two uniquely-titled entries so we can spot them in a shared list; pin one
   // and give it copies so the sort keys are distinguishable.

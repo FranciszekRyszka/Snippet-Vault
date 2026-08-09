@@ -1,4 +1,4 @@
-import { db, rowToSnippet } from "@/lib/db";
+import { db, rowToSnippet, captureRevisionIfChanged } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
 import { parseId, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api-utils";
@@ -42,25 +42,46 @@ export async function PUT(
     const sanitizedTags = sanitizeTags(tags);
     const sanitizedModel = sanitizeModel(model);
     const sanitizedKind = sanitizeKind(kind);
+    const tagsJson = JSON.stringify(sanitizedTags);
 
-    const stmt = db.prepare(`
-      UPDATE snippets
-      SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `);
+    // Capture the pre-edit state as a revision (unless nothing changed) and
+    // apply the update atomically, so history and the live row can't diverge.
+    const apply = db.transaction(() => {
+      const current = db
+        .prepare("SELECT * FROM snippets WHERE id = ?")
+        .get(numericId) as Record<string, unknown> | undefined;
+      if (!current) return 0;
+      captureRevisionIfChanged(current, {
+        title,
+        description: description || "",
+        code,
+        language,
+        tagsJson,
+        model: sanitizedModel,
+        kind: sanitizedKind,
+      });
+      const res = db
+        .prepare(
+          `UPDATE snippets
+           SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = datetime('now')
+           WHERE id = ?`
+        )
+        .run(
+          title,
+          description || "",
+          code,
+          language,
+          tagsJson,
+          sanitizedModel,
+          sanitizedKind,
+          numericId
+        );
+      return res.changes;
+    });
 
-    const result = stmt.run(
-      title,
-      description || "",
-      code,
-      language,
-      JSON.stringify(sanitizedTags),
-      sanitizedModel,
-      sanitizedKind,
-      numericId
-    );
+    const changes = apply();
 
-    if (result.changes === 0) {
+    if (changes === 0) {
       return NextResponse.json(
         { error: "Snippet not found" },
         { status: 404 }

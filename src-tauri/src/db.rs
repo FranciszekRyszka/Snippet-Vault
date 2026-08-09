@@ -9,6 +9,10 @@ use std::sync::Mutex;
 const SNIPPET_COLUMNS: &str =
     "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind";
 
+/// How many past revisions to keep per snippet. Older ones are pruned on each
+/// new capture so history stays bounded.
+const REVISION_KEEP: i64 = 50;
+
 /// Escape LIKE metacharacters so user input matches literally. Must be paired
 /// with an `ESCAPE '\'` clause on the LIKE. Without this, a search or tag value
 /// containing `%` or `_` would act as a wildcard (e.g. `%` matches everything).
@@ -78,6 +82,21 @@ pub struct Snippet {
 /// sync peer that never sends it): treat them as prompts.
 fn default_kind() -> String {
     "prompt".to_string()
+}
+
+/// A past version of a snippet, captured when it was edited. `saved_at` is the
+/// `updated_at` the version carried while it was live (i.e. when it was saved).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnippetRevision {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub code: String,
+    pub language: String,
+    pub tags: Vec<String>,
+    pub model: String,
+    pub kind: String,
+    pub saved_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -276,6 +295,27 @@ impl Database {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_uuid ON snippets(uuid);",
         )?;
 
+        // Prompt history: an append-only log of prior versions, keyed by the
+        // snippet's stable `uuid`. Each edit captures the pre-edit state here so
+        // it can be viewed and restored. Local-only (not synced) — append-only,
+        // so it never conflicts with the newest-wins sync model.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS snippet_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snippet_uuid TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                code TEXT NOT NULL,
+                language TEXT NOT NULL,
+                tags TEXT DEFAULT '[]',
+                model TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT 'prompt',
+                saved_at TEXT NOT NULL,
+                captured_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_revisions_uuid ON snippet_revisions(snippet_uuid, id);",
+        )?;
+
         Ok(Self {
             conn: Mutex::new(conn),
             path: path.to_path_buf(),
@@ -448,6 +488,45 @@ impl Database {
         let kind = input.kind.unwrap_or_else(default_kind);
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
+        // Capture the pre-edit state as a revision so it can be viewed/restored.
+        // Skip when nothing actually changed (a no-op save shouldn't add
+        // history). Read the current row's fields first.
+        let current: Option<(String, String, String, String, String, String, String, String, String)> = conn
+            .query_row(
+                "SELECT uuid, title, description, code, language, tags, model, kind, updated_at FROM snippets WHERE id = ?",
+                params![id],
+                |r| {
+                    Ok((
+                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
+                        r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?,
+                    ))
+                },
+            )
+            .optional()?;
+
+        if let Some((uuid, c_title, c_desc, c_code, c_lang, c_tags, c_model, c_kind, c_updated)) =
+            &current
+        {
+            let unchanged = *c_title == input.title
+                && *c_desc == description
+                && *c_code == input.code
+                && *c_lang == input.language
+                && *c_tags == tags_json
+                && *c_model == model
+                && *c_kind == kind;
+            if !unchanged && !uuid.is_empty() {
+                conn.execute(
+                    "INSERT INTO snippet_revisions (snippet_uuid, title, description, code, language, tags, model, kind, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![uuid, c_title, c_desc, c_code, c_lang, c_tags, c_model, c_kind, c_updated],
+                )?;
+                // Keep only the newest REVISION_KEEP per snippet.
+                conn.execute(
+                    "DELETE FROM snippet_revisions WHERE snippet_uuid = ?1 AND id NOT IN (SELECT id FROM snippet_revisions WHERE snippet_uuid = ?1 ORDER BY id DESC LIMIT ?2)",
+                    params![uuid, REVISION_KEEP],
+                )?;
+            }
+        }
+
         let rows_affected = conn.execute(
             "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = ? WHERE id = ?",
             params![input.title, description, input.code, input.language, tags_json, model, kind, now, id],
@@ -460,6 +539,34 @@ impl Database {
         } else {
             Ok(None)
         }
+    }
+
+    /// Past versions of a snippet (by its stable `uuid`), newest first.
+    pub fn get_revisions(&self, uuid: &str) -> Result<Vec<SnippetRevision>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, code, language, tags, model, kind, saved_at FROM snippet_revisions WHERE snippet_uuid = ? ORDER BY id DESC",
+        )?;
+        let iter = stmt.query_map(params![uuid], |row| {
+            let tags_str: String = row.get(5)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+            Ok(SnippetRevision {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                code: row.get(3)?,
+                language: row.get(4)?,
+                tags,
+                model: row.get(6)?,
+                kind: row.get(7)?,
+                saved_at: row.get(8)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in iter {
+            out.push(r?);
+        }
+        Ok(out)
     }
 
     /// Soft-delete: flag the row as a tombstone and bump `updated_at` so the
@@ -908,5 +1015,49 @@ mod sqli_tests {
 
         let _ = std::fs::remove_file(&dest);
         let _ = std::fs::remove_file(&junk);
+    }
+
+    #[test]
+    fn edits_capture_revisions_and_noops_do_not() {
+        let db = temp_db();
+        let s = db.create_snippet(mk("v1", "body one")).unwrap();
+
+        // A fresh snippet has no history yet.
+        assert_eq!(db.get_revisions(&s.uuid).unwrap().len(), 0);
+
+        // First real edit captures the prior ("v1") state.
+        let upd = |title: &str, code: &str| UpdateSnippetInput {
+            title: title.into(),
+            description: Some("desc".into()),
+            code: code.into(),
+            language: "text".into(),
+            tags: Some(vec!["rust".into()]),
+            model: None,
+            kind: None,
+        };
+        db.update_snippet(s.id, upd("v2", "body two")).unwrap();
+        let revs = db.get_revisions(&s.uuid).unwrap();
+        assert_eq!(revs.len(), 1);
+        assert_eq!(revs[0].title, "v1");
+        assert_eq!(revs[0].code, "body one");
+
+        // A no-op save (identical content) must not add a revision.
+        db.update_snippet(s.id, upd("v2", "body two")).unwrap();
+        assert_eq!(db.get_revisions(&s.uuid).unwrap().len(), 1);
+
+        // A second real edit captures "v2", newest first.
+        db.update_snippet(s.id, upd("v3", "body three")).unwrap();
+        let revs = db.get_revisions(&s.uuid).unwrap();
+        assert_eq!(revs.len(), 2);
+        assert_eq!(revs[0].title, "v2");
+        assert_eq!(revs[1].title, "v1");
+
+        // "Restore v1" = update with the old content; the current ("v3") state is
+        // itself captured, so history grows and the live row becomes v1 again.
+        db.update_snippet(s.id, upd("v1", "body one")).unwrap();
+        assert_eq!(db.get_snippet(s.id).unwrap().unwrap().title, "v1");
+        let revs = db.get_revisions(&s.uuid).unwrap();
+        assert_eq!(revs.len(), 3);
+        assert_eq!(revs[0].title, "v3");
     }
 }
