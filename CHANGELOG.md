@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+## [2.15.2] — 2026-08-10
+
+### Fixed
+- **Settings dialog now scrolls.** On shorter windows the Settings panel could
+  overflow the screen with no way to scroll, so its lower controls (and the
+  Library import/export/Trash actions) were unreachable without resizing the whole
+  app. The dialog is now capped to the viewport height with a scrollable body and
+  a pinned header.
+
 ## [2.15.1] — 2026-08-10
 
 ### Changed
@@ -373,7 +382,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...HEAD
+[2.15.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...v2.15.2
 [2.15.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...v2.15.1
 [2.15.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...v2.14.0

@@ -353,9 +353,9 @@ export function SettingsDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-lg">
-        <div className="mb-5 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-lg">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-lg font-semibold text-foreground">Settings</h2>
           <button
             onClick={onClose}
@@ -366,7 +366,7 @@ export function SettingsDialog({
           </button>
         </div>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
           {/* Library — import, export, and Trash (moved here from the header). */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
