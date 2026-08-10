@@ -473,6 +473,19 @@ fn purge_deleted(state: State<Mutex<AppState>>) -> Result<i64, String> {
     db.purge_deleted().map_err(|e| e.to_string())
 }
 
+/// Rename, merge, or delete a tag library-wide. `to = None` deletes it; renaming
+/// onto an existing tag merges them. Returns how many rows changed.
+#[tauri::command]
+fn rewrite_tag(
+    state: State<Mutex<AppState>>,
+    from: String,
+    to: Option<String>,
+) -> Result<i64, String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    let db = state.db.as_ref().ok_or("Database not initialized")?;
+    db.rewrite_tag(&from, to.as_deref()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn create_snippet(state: State<Mutex<AppState>>, input: CreateSnippetInput) -> Result<Snippet, String> {
     let input = validation::sanitize_create(input)?;
@@ -601,6 +614,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(app_state))
         .invoke_handler(tauri::generate_handler![
             get_snippets,
@@ -608,6 +622,7 @@ pub fn run() {
             purge_deleted,
             create_snippet,
             update_snippet,
+            rewrite_tag,
             get_revisions,
             delete_snippet,
             set_favorite,

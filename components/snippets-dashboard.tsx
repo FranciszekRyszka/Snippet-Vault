@@ -11,6 +11,7 @@ import { DbSetupDialog } from "./db-setup-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { TrashDialog } from "./trash-dialog";
 import { InsightsDialog } from "./insights-dialog";
+import { TagManagerDialog } from "./tag-manager-dialog";
 import { SavedViews } from "./saved-views";
 import type { ViewFilters } from "@/lib/saved-views";
 import { CommandPalette } from "./command-palette";
@@ -45,7 +46,7 @@ import {
 } from "@/lib/tauri-api";
 import { runSync } from "@/hooks/use-sync";
 import { LANGUAGES } from "@/lib/languages";
-import { ArrowDownUp, Cpu, ListChecks, Loader2, Upload, X } from "lucide-react";
+import { ArrowDownUp, Cpu, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
 
 // Bottom-center toast stack: newest at the bottom, capped so a burst of exports
 // doesn't cover the screen. Beyond the cap the oldest toast is evicted.
@@ -73,6 +74,7 @@ export function SnippetsDashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
   // Drag-and-drop file import: whether a file is being dragged over the window.
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -999,6 +1001,7 @@ export function SnippetsDashboard() {
     showSettings ||
     showTrash ||
     showInsights ||
+    showTagManager ||
     showPalette ||
     fillTarget !== null ||
     detailId !== null ||
@@ -1286,6 +1289,16 @@ export function SnippetsDashboard() {
                 Select
               </button>
 
+              {/* Global tag manager. */}
+              <button
+                onClick={() => setShowTagManager(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                title="Rename, merge, or delete tags across the whole library"
+              >
+                <Tags className="h-3.5 w-3.5" />
+                Tags
+              </button>
+
               {/* Saved searches ("views"). */}
               <SavedViews current={currentFilters} onApply={applyView} />
 
@@ -1501,6 +1514,17 @@ export function SnippetsDashboard() {
           snippets={allSnippets}
           onClose={() => setShowInsights(false)}
           onOpen={(s) => setDetailId(s.id)}
+        />
+      )}
+
+      {showTagManager && (
+        <TagManagerDialog
+          snippets={allSnippets}
+          onClose={() => setShowTagManager(false)}
+          onChanged={() => {
+            fetchSnippets();
+            fetchAllSnippets();
+          }}
         />
       )}
 

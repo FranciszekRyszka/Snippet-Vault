@@ -13,6 +13,25 @@ ships.
 
 ## [Unreleased]
 
+## [2.15.0] — 2026-08-10
+
+### Added
+- **Global tag manager.** A new **Tags** button (next to Views / Sort) opens a
+  manager that lists every tag with its usage count and lets you **rename**,
+  **merge**, or **delete** a tag across the whole library in one step. Renaming a
+  tag to a name another tag already uses merges the two. Changes bump each
+  affected entry's `updated_at`, so they sync like any other edit. Works on both
+  the desktop and the web/server backends.
+- **"Run in…" launcher.** The prompt detail view has a **Run in** menu that
+  copies the prompt and opens it in a chat app — **ChatGPT**, **Claude**,
+  **Gemini**, or **AI Studio** out of the box, plus any custom targets you add
+  (name + URL, remembered locally). For a prompt with `{{variables}}` it opens
+  the fill-in dialog first and launches once you copy the completed text. On the
+  desktop the link opens in your real browser (never inside the app window).
+- **Live placeholder highlight.** In the detail view, a prompt's
+  `{{placeholders}}` are now visually highlighted in the Raw view, so it's obvious
+  what still needs filling before you copy.
+
 ## [2.14.0] — 2026-08-10
 
 ### Added
@@ -343,7 +362,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...HEAD
+[2.15.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...v2.13.0
 [2.12.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...v2.12.0

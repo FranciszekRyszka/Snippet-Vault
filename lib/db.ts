@@ -254,6 +254,47 @@ export function captureRevisionIfChanged(
   ).run(uuid, uuid, REVISION_KEEP);
 }
 
+// Rename, merge, or delete a tag across the whole library. For every
+// (non-deleted) snippet whose tags contain `from`, replace `from` with `to`
+// (deduped, order preserved) — or drop it when `to` is null/empty (delete).
+// Renaming onto a tag some rows already carry merges them. Only changed rows are
+// rewritten, each with `updated_at` bumped so the change syncs (newest-wins).
+// `from`/`to` are trimmed + lowercased to match the app's tag convention.
+// Returns how many rows changed.
+export function rewriteTag(fromRaw: string, toRaw: string | null): number {
+  const from = fromRaw.trim().toLowerCase();
+  if (!from) return 0;
+  const to = toRaw == null ? null : toRaw.trim().toLowerCase() || null;
+  if (to === from) return 0; // renaming to itself is a no-op
+
+  const rows = db
+    .prepare(`SELECT id, tags FROM snippets WHERE deleted = 0`)
+    .all() as { id: number; tags: string }[];
+
+  const update = db.prepare(
+    `UPDATE snippets SET tags = ?, updated_at = datetime('now') WHERE id = ?`
+  );
+
+  const apply = db.transaction(() => {
+    let changed = 0;
+    for (const row of rows) {
+      const tags = parseTags(row.tags);
+      if (!tags.includes(from)) continue;
+      const next: string[] = [];
+      for (const t of tags) {
+        const mapped = t === from ? to : t;
+        if (mapped && !next.includes(mapped)) next.push(mapped);
+      }
+      const nextJson = JSON.stringify(next);
+      if (nextJson === row.tags) continue;
+      update.run(nextJson, row.id);
+      changed++;
+    }
+    return changed;
+  });
+  return apply();
+}
+
 // Past versions of the snippet with the given autoincrement id, newest first.
 export function getRevisionsForId(id: number): SnippetRevision[] {
   const rows = db

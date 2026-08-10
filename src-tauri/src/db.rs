@@ -462,6 +462,64 @@ impl Database {
         Ok(n as i64)
     }
 
+    /// Rename, merge, or delete a tag library-wide. For every (non-deleted)
+    /// snippet whose tags contain `from`, replace `from` with `to` (deduped,
+    /// order preserved) — or drop it entirely when `to` is None/empty (delete).
+    /// Renaming onto a tag some rows already carry merges the two. Only rows that
+    /// actually change are rewritten, each with `updated_at` bumped so the change
+    /// syncs (newest-wins). `from`/`to` are trimmed + lowercased to match the
+    /// app's tag convention. Returns how many rows changed.
+    pub fn rewrite_tag(&self, from: &str, to: Option<&str>) -> Result<i64> {
+        let from = from.trim().to_lowercase();
+        if from.is_empty() {
+            return Ok(0);
+        }
+        let to = to.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+        if to.as_deref() == Some(from.as_str()) {
+            return Ok(0); // renaming to itself is a no-op
+        }
+
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = conn.prepare("SELECT id, tags FROM snippets WHERE deleted = 0")?;
+            let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let mut v = Vec::new();
+            for row in mapped {
+                v.push(row?);
+            }
+            v
+        };
+
+        let mut changed = 0i64;
+        for (id, tags_json) in rows {
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            if !tags.iter().any(|t| t == &from) {
+                continue;
+            }
+            let mut next: Vec<String> = Vec::with_capacity(tags.len());
+            for t in tags {
+                let mapped = if t == from { to.clone() } else { Some(t) };
+                if let Some(v) = mapped {
+                    if !v.is_empty() && !next.iter().any(|x| x == &v) {
+                        next.push(v);
+                    }
+                }
+            }
+            let new_json = serde_json::to_string(&next).unwrap_or_else(|_| "[]".to_string());
+            if new_json == tags_json {
+                continue;
+            }
+            conn.execute(
+                "UPDATE snippets SET tags = ?, updated_at = ? WHERE id = ?",
+                params![new_json, now, id],
+            )?;
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
     pub fn get_snippet(&self, id: i64) -> Result<Option<Snippet>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -1105,5 +1163,47 @@ mod sqli_tests {
         let revs = db.get_revisions(&s.uuid).unwrap();
         assert_eq!(revs.len(), 3);
         assert_eq!(revs[0].title, "v3");
+    }
+
+    #[test]
+    fn rewrite_tag_renames_merges_and_deletes_across_the_library() {
+        let db = temp_db();
+        let tagged = |title: &str, tags: Vec<&str>| CreateSnippetInput {
+            title: title.into(),
+            description: None,
+            code: "body".into(),
+            language: "text".into(),
+            tags: Some(tags.into_iter().map(String::from).collect()),
+            model: None,
+            kind: None,
+        };
+        let a = db.create_snippet(tagged("a", vec!["rust", "cli"])).unwrap();
+        let b = db.create_snippet(tagged("b", vec!["rust"])).unwrap();
+        let c = db.create_snippet(tagged("c", vec!["python"])).unwrap();
+
+        let tags_of = |id: i64, db: &Database| db.get_snippet(id).unwrap().unwrap().tags;
+
+        // Rename: rust → rustlang touches the two rows that carry it.
+        assert_eq!(db.rewrite_tag("rust", Some("rustlang")).unwrap(), 2);
+        assert_eq!(tags_of(a.id, &db), vec!["rustlang", "cli"]);
+        assert_eq!(tags_of(b.id, &db), vec!["rustlang"]);
+        assert_eq!(tags_of(c.id, &db), vec!["python"]); // untouched
+
+        // Merge: renaming cli → rustlang on a row that already has rustlang
+        // collapses to a single, deduped tag.
+        assert_eq!(db.rewrite_tag("cli", Some("rustlang")).unwrap(), 1);
+        assert_eq!(tags_of(a.id, &db), vec!["rustlang"]);
+
+        // Input is normalized (trim + lowercase) to match stored tags.
+        assert_eq!(db.rewrite_tag("  PYTHON ", Some("Py")).unwrap(), 1);
+        assert_eq!(tags_of(c.id, &db), vec!["py"]);
+
+        // Delete: dropping a tag removes it everywhere and bumps updated_at (so it
+        // syncs). A no-op rename (to itself) and an absent tag change nothing.
+        assert_eq!(db.rewrite_tag("rustlang", None).unwrap(), 2);
+        assert_eq!(tags_of(a.id, &db), Vec::<String>::new());
+        assert_eq!(tags_of(b.id, &db), Vec::<String>::new());
+        assert_eq!(db.rewrite_tag("py", Some("py")).unwrap(), 0);
+        assert_eq!(db.rewrite_tag("nonexistent", Some("x")).unwrap(), 0);
     }
 }

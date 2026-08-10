@@ -28,12 +28,19 @@ import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-sta
 import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { MarkdownView } from "./markdown-view";
+import { PromptBody } from "./prompt-body";
+import { RunInMenu } from "./run-in-menu";
 import { exportSnippet, exportSnippetMarkdown } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { DiffBlock } from "./diff-block";
 import { diffLines, diffStats } from "@/lib/diff";
 import { toMarkdown } from "@/lib/to-markdown";
-import { getRevisions, type Snippet, type SnippetRevision } from "@/lib/tauri-api";
+import {
+  getRevisions,
+  openExternal,
+  type Snippet,
+  type SnippetRevision,
+} from "@/lib/tauri-api";
 
 type SnippetDetailProps = {
   snippet: Snippet;
@@ -86,6 +93,10 @@ export function SnippetDetail({
   // code snippets never offer a preview.
   const [preview, setPreview] = useState(false);
   const canPreview = snippet.kind !== "code";
+  // "Run in…" launcher: a URL to open once the prompt has been copied. For a
+  // prompt with variables we open the fill dialog first and launch after the
+  // filled copy; otherwise we copy and launch immediately.
+  const [pendingLaunch, setPendingLaunch] = useState<string | null>(null);
   const stats = getPromptStats(snippet.code);
   const tags = snippet.tags || [];
 
@@ -176,6 +187,24 @@ export function SnippetDetail({
     } catch (err) {
       console.error("Copy as Markdown failed:", err);
     }
+  };
+
+  // "Run in X": copy the prompt, then open the target site to paste into. A
+  // prompt with variables routes through the fill dialog first (its filled text
+  // is what gets copied), and we open the site once that copy completes.
+  const handleLaunch = async (url: string) => {
+    if (hasVars) {
+      setPendingLaunch(url);
+      setShowFill(true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(snippet.code);
+      onCopied(snippet.id);
+    } catch (err) {
+      console.error("Copy failed:", err);
+    }
+    await openExternal(url);
   };
 
   const meta: { label: string; value: string }[] = [
@@ -292,6 +321,13 @@ export function SnippetDetail({
             <div style={{ maxHeight: "50vh", overflow: "auto" }}>
               <MarkdownView source={snippet.code} />
             </div>
+          ) : canPreview ? (
+            // Prompts (Raw): highlight {{placeholders}} so they're obvious.
+            <PromptBody
+              code={snippet.code}
+              maxHeight="50vh"
+              onCopied={() => onCopied(snippet.id)}
+            />
           ) : (
             <CodeBlock
               code={snippet.code}
@@ -514,6 +550,7 @@ export function SnippetDetail({
             <Pencil className="h-4 w-4" />
             Edit
           </button>
+          {canPreview && <RunInMenu onLaunch={handleLaunch} />}
           <button
             onClick={handleCopy}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -530,8 +567,18 @@ export function SnippetDetail({
           uuid={snippet.uuid}
           title={snippet.title}
           code={snippet.code}
-          onClose={() => setShowFill(false)}
-          onCopied={flashCopied}
+          onClose={() => {
+            setShowFill(false);
+            setPendingLaunch(null); // dismissed without copying → cancel the launch
+          }}
+          onCopied={() => {
+            flashCopied();
+            if (pendingLaunch) {
+              const url = pendingLaunch;
+              setPendingLaunch(null);
+              void openExternal(url);
+            }
+          }}
         />
       )}
     </>

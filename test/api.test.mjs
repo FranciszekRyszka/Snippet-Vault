@@ -267,6 +267,60 @@ test("sort orders by the requested key, with a safe fallback", async () => {
   assert.equal(only(bad).length, 2, "garbage sort falls back safely");
 });
 
+test("tag rewrite renames, merges, and deletes across the library", async () => {
+  const uniq = crypto.randomUUID().slice(0, 8);
+  const from = `rw-${uniq}`;
+  const other = `rw2-${uniq}`;
+  const to = `rwnew-${uniq}`;
+  const a = await create({ title: `tagrw a ${uniq}`, tags: [from, other] });
+  const b = await create({ title: `tagrw b ${uniq}`, tags: [from] });
+  createdIds.push(a.body.id, b.body.id);
+
+  const tagsOf = async (id) => {
+    const { body } = await api("/api/snippets", { headers: auth });
+    const row = body.find((s) => s.id === id);
+    return row ? row.tags : null;
+  };
+
+  // Rename `from` → `to` touches both rows.
+  const renamed = await api("/api/tags", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ from, to }),
+  });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.changed, 2);
+  assert.deepEqual(await tagsOf(a.body.id), [to, other]);
+  assert.deepEqual(await tagsOf(b.body.id), [to]);
+
+  // Merge: rename `other` → `to` on a row that already has `to` dedupes.
+  const merged = await api("/api/tags", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ from: other, to }),
+  });
+  assert.equal(merged.body.changed, 1);
+  assert.deepEqual(await tagsOf(a.body.id), [to]);
+
+  // Delete: `to: null` drops the tag everywhere.
+  const deleted = await api("/api/tags", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ from: to, to: null }),
+  });
+  assert.equal(deleted.body.changed, 2);
+  assert.deepEqual(await tagsOf(a.body.id), []);
+  assert.deepEqual(await tagsOf(b.body.id), []);
+
+  // A missing `from` is a 400.
+  const bad = await api("/api/tags", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ to: "x" }),
+  });
+  assert.equal(bad.status, 400);
+});
+
 test("sync inserts a pushed record and echoes the merged set", async () => {
   const uuid = "test-" + crypto.randomUUID();
   const { status, body } = await api("/api/sync", {

@@ -268,6 +268,36 @@ export async function purgeTrash(): Promise<number> {
   return body.purged;
 }
 
+// Rename, merge, or delete a tag across the whole library. `to = null` deletes
+// the tag; renaming onto an existing tag merges them. Bumps `updated_at` on the
+// changed rows so the change syncs (newest-wins). Returns how many rows changed.
+export async function rewriteTag(from: string, to: string | null): Promise<number> {
+  if (await useLocalDb()) {
+    return invoke<number>("rewrite_tag", { from, to });
+  }
+
+  const res = await apiFetch("/api/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+  });
+  await throwIfNotOk(res, "Failed to update tag");
+  const body = (await res.json()) as { changed: number };
+  return body.changed ?? 0;
+}
+
+// Open an external URL in the user's default browser. On the desktop this goes
+// through the OS via the opener plugin (never navigates the app's own webview);
+// on the web it opens a new tab. Used by the per-prompt "Run in…" launcher.
+export async function openExternal(url: string): Promise<void> {
+  if (isTauri()) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 // A past version of a snippet (prompt history). `saved_at` is the version's own
 // last-saved time (its `updated_at` while it was live).
 export type SnippetRevision = {
