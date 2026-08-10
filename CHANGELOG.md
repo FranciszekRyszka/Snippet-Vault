@@ -13,6 +13,16 @@ ships.
 
 ## [Unreleased]
 
+## [2.15.3] — 2026-08-10
+
+### Fixed
+- **Settings no longer scrolls the page behind it.** Scrolling to the bottom of
+  the Settings dialog used to start scrolling the main window; the background is
+  now frozen while Settings is open.
+- **Settings now tracks the window size.** The dialog is sized against the live
+  window rather than a fixed viewport unit, so it grows and shrinks correctly as
+  you resize the app instead of keeping a stale height.
+
 ## [2.15.2] — 2026-08-10
 
 ### Fixed
@@ -382,7 +392,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.3...HEAD
+[2.15.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...v2.15.3
 [2.15.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...v2.15.2
 [2.15.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...v2.15.1
 [2.15.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...v2.15.0
