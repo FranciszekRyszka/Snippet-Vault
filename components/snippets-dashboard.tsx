@@ -14,6 +14,7 @@ import { InsightsDialog } from "./insights-dialog";
 import { SavedViews } from "./saved-views";
 import type { ViewFilters } from "@/lib/saved-views";
 import { CommandPalette } from "./command-palette";
+import { BulkActionsBar } from "./bulk-actions-bar";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { extractVars } from "@/lib/prompt-vars";
 import { UpdateBanner } from "./update-banner";
@@ -44,7 +45,7 @@ import {
 } from "@/lib/tauri-api";
 import { runSync } from "@/hooks/use-sync";
 import { LANGUAGES } from "@/lib/languages";
-import { ArrowDownUp, Cpu, Loader2, Upload, X } from "lucide-react";
+import { ArrowDownUp, Cpu, ListChecks, Loader2, Upload, X } from "lucide-react";
 
 // Bottom-center toast stack: newest at the bottom, capped so a burst of exports
 // doesn't cover the screen. Beyond the cap the oldest toast is evicted.
@@ -102,6 +103,11 @@ export function SnippetsDashboard() {
   const [sort, setSort] = useState<SortKey>("recent");
   // Keyboard navigation: index of the highlighted card in `visible` (-1 = none).
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  // Multi-select: selection mode toggle, the chosen ids, and a busy flag while a
+  // bulk operation runs.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -592,6 +598,172 @@ export function SnippetsDashboard() {
   const handleModelClick = (model: string) =>
     setActiveModel((prev) => (prev === model ? "" : model));
 
+  // ---- Multi-select bulk actions ----
+
+  // The selected snippets as full objects, resolved from the loaded lists (the
+  // filtered list first, then the full library). Ids that no longer resolve are
+  // dropped.
+  const selectedList = useMemo(() => {
+    const byId = new Map<number, Snippet>();
+    for (const s of allSnippets) byId.set(s.id, s);
+    for (const s of snippets) byId.set(s.id, s);
+    const out: Snippet[] = [];
+    for (const id of selected) {
+      const s = byId.get(id);
+      if (s) out.push(s);
+    }
+    return out;
+  }, [selected, snippets, allSnippets]);
+
+  const toggleSelect = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const selectAllVisible = () =>
+    setSelected(new Set(visibleRef.current.map((s) => s.id)));
+  const clearSelection = () => setSelected(new Set());
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  // Pin/unpin every selected entry, then reload so the pinned ordering applies.
+  const bulkFavorite = async (favorite: boolean) => {
+    if (selectedList.length === 0) return;
+    setBulkBusy(true);
+    let failed = 0;
+    for (const s of selectedList) {
+      try {
+        await setFavorite(s.id, favorite);
+      } catch (err) {
+        console.error("Bulk pin failed for", s.id, err);
+        failed++;
+      }
+    }
+    await fetchSnippets();
+    await fetchAllSnippets();
+    setBulkBusy(false);
+    const verb = favorite ? "Pinned" : "Unpinned";
+    showNotice(
+      `${verb} ${selectedList.length - failed} prompt${
+        selectedList.length - failed !== 1 ? "s" : ""
+      }${failed ? `, ${failed} failed` : ""}.`
+    );
+  };
+
+  // Set the kind (prompt/code) on every selected entry. Rewrites each row via the
+  // normal update path (which captures a revision); entries already of that kind
+  // are skipped.
+  const bulkSetKind = async (kind: SnippetKind) => {
+    const targets = selectedList.filter((s) => s.kind !== kind);
+    if (targets.length === 0) {
+      showNotice(`All selected are already ${kind === "code" ? "code" : "prompts"}.`);
+      return;
+    }
+    setBulkBusy(true);
+    let failed = 0;
+    for (const s of targets) {
+      try {
+        await updateSnippet(s.id, {
+          title: s.title,
+          description: s.description,
+          code: s.code,
+          language: s.language,
+          tags: s.tags || [],
+          model: s.model || "",
+          kind,
+        });
+      } catch (err) {
+        console.error("Bulk set-kind failed for", s.id, err);
+        failed++;
+      }
+    }
+    await fetchSnippets();
+    await fetchAllSnippets();
+    setBulkBusy(false);
+    showNotice(
+      `Set ${targets.length - failed} to ${kind === "code" ? "code" : "prompt"}${
+        failed ? `, ${failed} failed` : ""
+      }.`
+    );
+  };
+
+  // Export the selected entries to a single JSON file (the per-prompt content
+  // shape, so re-importing creates/updates them via the import path).
+  const bulkExport = () => {
+    if (selectedList.length === 0) return;
+    try {
+      const data = selectedList.map((s) => ({
+        title: s.title,
+        description: s.description,
+        code: s.code,
+        language: s.language,
+        tags: s.tags || [],
+        model: s.model || "",
+        kind: s.kind || "prompt",
+      }));
+      const filename = `snipvault-selection-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`;
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showNotice(
+        `Exported ${data.length} ${data.length === 1 ? "entry" : "entries"} to your Downloads folder (${filename}).`
+      );
+    } catch (err) {
+      console.error("Bulk export failed:", err);
+      showError("Couldn't export the selection.");
+    }
+  };
+
+  // Delete every selected entry. Deletes are soft (they land in Trash), so no
+  // per-item undo — the toast points at Trash for recovery.
+  const bulkDelete = async () => {
+    const targets = selectedList;
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    const ids = new Set(targets.map((s) => s.id));
+    for (const id of ids) pendingDeletes.current.add(id);
+    setSnippets((prev) => prev.filter((s) => !ids.has(s.id)));
+    setAllSnippets((prev) => prev.filter((s) => !ids.has(s.id)));
+    let failed = 0;
+    for (const s of targets) {
+      try {
+        await deleteSnippet(s.id);
+      } catch (err) {
+        console.error("Bulk delete failed for", s.id, err);
+        pendingDeletes.current.delete(s.id);
+        failed++;
+      }
+    }
+    await fetchSnippets();
+    await fetchAllSnippets();
+    setBulkBusy(false);
+    exitSelectMode();
+    const done = targets.length - failed;
+    if (done > 0) {
+      showNotice(
+        `Deleted ${done} prompt${done !== 1 ? "s" : ""} — restore from Trash if needed.`
+      );
+    }
+    if (failed > 0) {
+      showError(`Couldn't delete ${failed} prompt${failed !== 1 ? "s" : ""}.`);
+    }
+  };
+
   // Confirm a single-prompt export so the user knows the download happened and
   // where it landed. The Blob download goes to the browser/OS Downloads folder
   // (its absolute path isn't exposed to JS), and we surface the filename that
@@ -852,6 +1024,8 @@ export function SnippetsDashboard() {
           setEditingSnippet(null);
         } else if (showSettings) {
           setShowSettings(false);
+        } else if (selectMode) {
+          exitSelectMode();
         }
         return;
       }
@@ -901,7 +1075,7 @@ export function SnippetsDashboard() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [anyModalOpen, showForm, showSettings, handleNewSnippet]);
+  }, [anyModalOpen, showForm, showSettings, selectMode, handleNewSnippet]);
 
   const handleEdit = (snippet: Snippet) => {
     setDetailId(null);
@@ -1095,6 +1269,23 @@ export function SnippetsDashboard() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Multi-select toggle. */}
+              <button
+                onClick={() =>
+                  selectMode ? exitSelectMode() : setSelectMode(true)
+                }
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-medium transition-colors ${
+                  selectMode
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-foreground hover:bg-accent"
+                }`}
+                title="Select multiple entries for bulk actions"
+                aria-pressed={selectMode}
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                Select
+              </button>
+
               {/* Saved searches ("views"). */}
               <SavedViews current={currentFilters} onApply={applyView} />
 
@@ -1177,6 +1368,9 @@ export function SnippetsDashboard() {
                   onCopied={handleCopied}
                   onExported={handleExported}
                   onDuplicate={handleDuplicate}
+                  selectable={selectMode}
+                  selected={selected.has(snippet.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </div>
@@ -1218,6 +1412,21 @@ export function SnippetsDashboard() {
           onExported={handleExported}
           onRestoreRevision={handleRestoreRevision}
           onDuplicate={handleDuplicate}
+        />
+      )}
+
+      {selectMode && (
+        <BulkActionsBar
+          count={selected.size}
+          allSelected={visible.length > 0 && selected.size >= visible.length}
+          busy={bulkBusy}
+          onSelectAll={selectAllVisible}
+          onClear={clearSelection}
+          onClose={exitSelectMode}
+          onFavorite={bulkFavorite}
+          onSetKind={bulkSetKind}
+          onExport={bulkExport}
+          onDelete={bulkDelete}
         />
       )}
 

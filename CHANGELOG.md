@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+## [2.14.0] — 2026-08-10
+
+### Added
+- **Multi-select bulk actions.** A new **Select** toggle (next to Views / Sort)
+  turns on selection mode: tick the checkbox on any entries and act on them all
+  at once from the bottom action bar — **Pin / Unpin**, set kind to **Prompt** or
+  **Code**, **Export** the selection to a single JSON file, or **Delete** (a
+  two-step confirm; deleted entries move to Trash and can be restored). **Select
+  all** grabs everything currently visible, and **Esc** leaves selection mode.
+  Bulk kind changes go through the normal edit path, so each still records a
+  version in the entry's history.
+
 ## [2.13.0] — 2026-08-10
 
 ### Added
@@ -331,7 +343,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...HEAD
+[2.14.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...v2.13.0
 [2.12.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...v2.11.0

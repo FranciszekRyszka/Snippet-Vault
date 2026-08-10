@@ -41,6 +41,10 @@ type SnippetCardProps = {
   onDuplicate: (snippet: Snippet) => void;
   // Highlighted by keyboard navigation (j/k) — draws a focus ring.
   focused?: boolean;
+  // Multi-select mode: show a checkbox and reflect selection.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: number) => void;
 };
 
 // Build a filename-safe slug from a title for exports.
@@ -124,10 +128,26 @@ export function SnippetCard({
   onExported,
   onDuplicate,
   focused = false,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: SnippetCardProps) {
   // Draw a focus ring + anchor id when keyboard-navigation highlights this card.
   const domId = `snip-card-${snippet.id}`;
   const focusRing = focused ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "";
+  // In selection mode, a selected card gets a tinted border/ring instead.
+  const selectRing = selected ? "border-primary ring-1 ring-primary" : "";
+
+  const selectBox = selectable ? (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onToggleSelect?.(snippet.id)}
+      onClick={(e) => e.stopPropagation()}
+      className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+      aria-label={selected ? "Deselect prompt" : "Select prompt"}
+    />
+  ) : null;
   const [copied, setCopied] = useState(false);
   const [showFill, setShowFill] = useState(false);
 
@@ -307,8 +327,9 @@ export function SnippetCard({
       <>
       <article
         id={domId}
-        className={`group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30 ${focusRing}`}
+        className={`group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30 ${focusRing} ${selectRing}`}
       >
+        {selectBox}
         {starButton}
         <HoverCard openDelay={350} closeDelay={100}>
           <HoverCardTrigger asChild>
@@ -387,9 +408,10 @@ export function SnippetCard({
     <>
     <article
       id={domId}
-      className={`group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30 ${focusRing}`}
+      className={`group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30 ${focusRing} ${selectRing}`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
+        {selectBox && <div className="pt-1">{selectBox}</div>}
         <div className="min-w-0 flex-1">
           <button
             onClick={() => onOpen(snippet)}
