@@ -13,6 +13,17 @@ ships.
 
 ## [Unreleased]
 
+## [2.15.1] — 2026-08-10
+
+### Changed
+- **Tidier header; utilities moved into Settings.** The header now keeps just the
+  essentials (New, Insights, Settings, theme, and the sync indicator). **Import**,
+  **Export library**, **Trash**, and the **accent color** picker now live in
+  **Settings**, under new **Library** and **Appearance** sections. Settings is now
+  available in the **web app** too (its desktop-only sections — sync server,
+  database location, backups, updates — stay hidden there). No behavior changes,
+  and drag-and-drop import still works.
+
 ## [2.15.0] — 2026-08-10
 
 ### Added
@@ -362,7 +373,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...HEAD
+[2.15.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...v2.15.1
 [2.15.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...v2.13.0

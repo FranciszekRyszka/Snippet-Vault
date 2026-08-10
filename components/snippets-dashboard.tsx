@@ -82,8 +82,6 @@ export function SnippetsDashboard() {
   // detail copy) is currently filling before copying.
   const [showPalette, setShowPalette] = useState(false);
   const [fillTarget, setFillTarget] = useState<Snippet | null>(null);
-  // Set after mount to avoid hydration mismatch on the desktop-only settings UI.
-  const [desktop, setDesktop] = useState(false);
   // Whether a sync server is configured (desktop only) — gates the header's
   // sync indicator. Kept in sync with add/remove in Settings.
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -288,7 +286,6 @@ export function SnippetsDashboard() {
 
   // On mount, work out the active data source (desktop first-run / sync server).
   useEffect(() => {
-    setDesktop(isTauri());
     refreshReady();
   }, [refreshReady]);
 
@@ -1173,11 +1170,8 @@ export function SnippetsDashboard() {
       )}
       <Header
         onNewSnippet={handleNewSnippet}
-        onImport={handleImportClick}
-        onExportLibrary={handleExportLibrary}
-        onOpenTrash={() => setShowTrash(true)}
         onOpenInsights={() => setShowInsights(true)}
-        onOpenSettings={desktop ? () => setShowSettings(true) : undefined}
+        onOpenSettings={() => setShowSettings(true)}
         syncEnabled={syncEnabled}
         onSyncNow={runSyncAndReload}
       />
@@ -1535,6 +1529,18 @@ export function SnippetsDashboard() {
       {showSettings && (
         <SettingsDialog
           onClose={() => setShowSettings(false)}
+          onImport={() => {
+            setShowSettings(false);
+            handleImportClick();
+          }}
+          onExportLibrary={() => {
+            setShowSettings(false);
+            handleExportLibrary();
+          }}
+          onOpenTrash={() => {
+            setShowSettings(false);
+            setShowTrash(true);
+          }}
           onDbChanged={() => {
             // Covers switching local DB file and connecting/disconnecting a
             // sync server: re-evaluate the data source and whether a server is

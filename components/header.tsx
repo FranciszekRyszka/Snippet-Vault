@@ -6,9 +6,6 @@ import {
   Sun,
   Plus,
   Settings,
-  Upload,
-  Download,
-  Trash2,
   BarChart3,
   RefreshCw,
   Loader2,
@@ -17,7 +14,6 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useSyncStore } from "@/hooks/use-sync";
-import { AccentPicker } from "./accent-picker";
 
 // Compact relative time for the sync indicator ("2m ago"), kept short for the
 // header chip rather than date-fns's longer "2 minutes ago".
@@ -88,24 +84,15 @@ function SyncIndicator({ onSyncNow }: { onSyncNow: () => void }) {
 
 export function Header({
   onNewSnippet,
-  onImport,
-  onExportLibrary,
-  onOpenTrash,
   onOpenInsights,
   onOpenSettings,
   syncEnabled,
   onSyncNow,
 }: {
   onNewSnippet: () => void;
-  // Opens a file picker to import prompts from a JSON export.
-  onImport: () => void;
-  // Downloads the whole library as a JSON file.
-  onExportLibrary?: () => void;
-  // Opens the Trash (recently deleted) view.
-  onOpenTrash?: () => void;
   // Opens the usage insights panel.
   onOpenInsights?: () => void;
-  // Provided only in the desktop app; when set, a settings button is shown.
+  // Opens Settings — which now also holds Import / Export / Trash / Accent.
   onOpenSettings?: () => void;
   // Desktop + a configured sync server: show the last-synced indicator.
   syncEnabled?: boolean;
@@ -142,24 +129,6 @@ export function Header({
             <Plus className="h-3.5 w-3.5" />
             New Prompt/Snippet
           </button>
-          <button
-            onClick={onImport}
-            title="Import prompts from a JSON file"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Import prompts"
-          >
-            <Upload className="h-4 w-4" />
-          </button>
-          {onExportLibrary && (
-            <button
-              onClick={onExportLibrary}
-              title="Export your whole library to a JSON file"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Export library"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          )}
           {onOpenInsights && (
             <button
               onClick={onOpenInsights}
@@ -170,26 +139,16 @@ export function Header({
               <BarChart3 className="h-4 w-4" />
             </button>
           )}
-          {onOpenTrash && (
-            <button
-              onClick={onOpenTrash}
-              title="Trash (recently deleted)"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Open trash"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
+              title="Settings"
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Settings"
             >
               <Settings className="h-4 w-4" />
             </button>
           )}
-          <AccentPicker />
           {mounted && (
             <button
               onClick={() =>

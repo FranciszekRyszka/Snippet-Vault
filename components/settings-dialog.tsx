@@ -8,12 +8,15 @@ import {
   Loader2,
   Check,
   Download,
+  Upload,
+  Trash2,
   RefreshCw,
   Server,
   Plug,
   Unplug,
   Archive,
   RotateCcw,
+  Palette,
 } from "lucide-react";
 import {
   getDatabasePath,
@@ -28,8 +31,10 @@ import {
   getSyncServer,
   saveSyncServer,
   removeSyncServer,
+  isTauri,
   type SyncServer,
 } from "@/lib/tauri-api";
+import { AccentSwatches } from "./accent-picker";
 import { runSync as runSharedSync } from "@/hooks/use-sync";
 import {
   checkForUpdate,
@@ -44,11 +49,27 @@ type SettingsDialogProps = {
   onClose: () => void;
   // Called when the active database changes, so the dashboard can reload.
   onDbChanged: () => void;
+  // Library actions surfaced here (moved out of the header). Each closes
+  // Settings first, then runs — see the dashboard wiring.
+  onImport: () => void;
+  onExportLibrary: () => void;
+  onOpenTrash: () => void;
 };
 
-// Desktop settings: shows the current database location, lets the user switch
-// to a different database file, and back up the current one.
-export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
+// Settings. The top sections (Library actions, Appearance) work everywhere; the
+// database, sync-server, backup, and update sections are desktop-only and hidden
+// on the web, where the Tauri commands they call don't exist.
+export function SettingsDialog({
+  onClose,
+  onDbChanged,
+  onImport,
+  onExportLibrary,
+  onOpenTrash,
+}: SettingsDialogProps) {
+  // Detected after mount to stay SSR-safe; the dialog only opens post-mount, so
+  // the first render already has the right value in practice.
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => setDesktop(isTauri()), []);
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [backupsDir, setBackupsDir] = useState<string | null>(null);
   const [autoBackup, setAutoBackup] = useState(false);
@@ -79,6 +100,9 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
+    // All of these are desktop-only (Tauri commands / desktop updater); don't
+    // call them on the web, where they'd throw.
+    if (!isTauri()) return;
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
     getBackupsDir().then(setBackupsDir).catch(() => setBackupsDir(null));
     getBackupSettings()
@@ -343,7 +367,56 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
         </div>
 
         <div className="flex flex-col gap-5">
+          {/* Library — import, export, and Trash (moved here from the header). */}
           <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Library
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={onImport}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Upload className="h-4 w-4" />
+                Import…
+              </button>
+              <button
+                type="button"
+                onClick={onExportLibrary}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Download className="h-4 w-4" />
+                Export library
+              </button>
+              <button
+                type="button"
+                onClick={onOpenTrash}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Trash2 className="h-4 w-4" />
+                Trash
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Import prompts from a JSON/.md/.txt file, export your whole library
+              as JSON, or restore recently deleted prompts from Trash. You can also
+              drag files onto the window to import.
+            </p>
+          </div>
+
+          {/* Appearance — accent colour. */}
+          <div className="border-t border-border pt-5">
+            <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Palette className="h-4 w-4" />
+              Accent color
+            </label>
+            <AccentSwatches />
+          </div>
+
+          {desktop && (
+          <>
+          <div className="border-t border-border pt-5">
             <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
               <Server className="h-4 w-4" />
               Sync server
@@ -631,6 +704,8 @@ export function SettingsDialog({ onClose, onDbChanged }: SettingsDialogProps) {
               </p>
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>
