@@ -20,11 +20,14 @@ import {
   ChevronDown,
   FileCode2,
   FileDown,
+  Eye,
+  FileText,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
+import { MarkdownView } from "./markdown-view";
 import { exportSnippet, exportSnippetMarkdown } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { DiffBlock } from "./diff-block";
@@ -78,6 +81,11 @@ export function SnippetDetail({
   const [copied, setCopied] = useState(false);
   const [copiedMd, setCopiedMd] = useState(false);
   const [showFill, setShowFill] = useState(false);
+  // Rendered-Markdown vs raw view. Prompts are often Markdown, but the raw view
+  // stays the default so the Copy button and syntax highlighting are unchanged;
+  // code snippets never offer a preview.
+  const [preview, setPreview] = useState(false);
+  const canPreview = snippet.kind !== "code";
   const stats = getPromptStats(snippet.code);
   const tags = snippet.tags || [];
 
@@ -258,12 +266,40 @@ export function SnippetDetail({
 
         {/* Code */}
         <div className="p-5">
-          <CodeBlock
-            code={snippet.code}
-            language={snippet.language}
-            maxHeight="50vh"
-            onCopied={() => onCopied(snippet.id)}
-          />
+          {canPreview && (
+            <div className="mb-2 inline-flex rounded-md border border-border p-0.5 text-xs">
+              {([false, true] as const).map((mode) => (
+                <button
+                  key={String(mode)}
+                  onClick={() => setPreview(mode)}
+                  className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition-colors ${
+                    preview === mode
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {mode ? (
+                    <Eye className="h-3 w-3" />
+                  ) : (
+                    <FileText className="h-3 w-3" />
+                  )}
+                  {mode ? "Preview" : "Raw"}
+                </button>
+              ))}
+            </div>
+          )}
+          {canPreview && preview ? (
+            <div style={{ maxHeight: "50vh", overflow: "auto" }}>
+              <MarkdownView source={snippet.code} />
+            </div>
+          ) : (
+            <CodeBlock
+              code={snippet.code}
+              language={snippet.language}
+              maxHeight="50vh"
+              onCopied={() => onCopied(snippet.id)}
+            />
+          )}
           <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Hash className="h-3 w-3" />
             {formatCount(stats.chars)} characters · {formatCount(stats.words)} words

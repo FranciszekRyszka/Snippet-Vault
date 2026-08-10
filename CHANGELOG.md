@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-08-10
+
+### Added
+- **Markdown preview for prompts.** The detail view now has a **Raw / Preview**
+  toggle for prompts: **Preview** renders the body as Markdown — headings, bold
+  and italic, inline and fenced code, links, blockquotes, ordered and unordered
+  lists, and horizontal rules. Raw stays the default (with its Copy button and
+  syntax highlighting), and code snippets are unaffected. The renderer is
+  built-in and safe by construction — it parses to a fixed set of elements and
+  never injects HTML, and link targets are restricted to `http(s)`/`mailto`, so
+  untrusted or imported prompt text can't smuggle in markup or scripts.
+
 ## [2.12.0] — 2026-08-10
 
 ### Added
@@ -319,7 +331,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.13.0...HEAD
+[2.13.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.12.0...v2.13.0
 [2.12.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.9.0...v2.10.0
