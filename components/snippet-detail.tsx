@@ -117,6 +117,10 @@ export function SnippetDetail({
   const [revsError, setRevsError] = useState<string | null>(null);
   const [expandedRev, setExpandedRev] = useState<number | null>(null);
   const [revViewMode, setRevViewMode] = useState<"diff" | "full">("diff");
+  // What the expanded revision is diffed against: the current version (default)
+  // or another past revision. Reset to "current" whenever a different revision
+  // is expanded.
+  const [compareId, setCompareId] = useState<number | "current">("current");
   const [restoringId, setRestoringId] = useState<number | null>(null);
 
   const loadRevisions = useCallback(async () => {
@@ -424,13 +428,14 @@ export function SnippetDetail({
                     >
                       <div className="flex items-center justify-between gap-2 p-3">
                         <button
-                          onClick={() =>
+                          onClick={() => {
                             setExpandedRev((cur) =>
                               cur === rev.id ? null : rev.id
-                            )
-                          }
+                            );
+                            setCompareId("current");
+                          }}
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                          title="Compare this version with the current one"
+                          title="Expand to compare this version"
                         >
                           <ChevronDown
                             className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
@@ -460,8 +465,30 @@ export function SnippetDetail({
                       {expandedRev === rev.id && (
                         <div className="border-t border-border p-3">
                           {(() => {
+                            // Resolve the comparison target: the current version
+                            // or another revision. Diff chronologically (older →
+                            // newer) so +/- always reads as forward change: the
+                            // current version is newest; among revisions a higher
+                            // id is newer.
+                            const targetRev =
+                              compareId === "current"
+                                ? null
+                                : revisions?.find((r) => r.id === compareId) ??
+                                  null;
+                            const targetIsCurrent =
+                              compareId === "current" || targetRev === null;
+                            const targetCode = targetIsCurrent
+                              ? snippet.code
+                              : targetRev!.code;
+                            const targetLabel = targetIsCurrent
+                              ? "current version"
+                              : formatDateTime(targetRev!.saved_at);
+                            const targetIsNewer =
+                              targetIsCurrent || targetRev!.id > rev.id;
+                            const oldText = targetIsNewer ? rev.code : targetCode;
+                            const newText = targetIsNewer ? targetCode : rev.code;
                             const { added, removed } = diffStats(
-                              diffLines(rev.code, snippet.code)
+                              diffLines(oldText, newText)
                             );
                             const unchanged = added === 0 && removed === 0;
                             return (
@@ -483,12 +510,38 @@ export function SnippetDetail({
                                     ))}
                                   </div>
                                   {revViewMode === "diff" && (
+                                    <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      vs
+                                      <select
+                                        value={String(compareId)}
+                                        onChange={(e) =>
+                                          setCompareId(
+                                            e.target.value === "current"
+                                              ? "current"
+                                              : Number(e.target.value)
+                                          )
+                                        }
+                                        className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                      >
+                                        <option value="current">
+                                          Current version
+                                        </option>
+                                        {revisions
+                                          ?.filter((r) => r.id !== rev.id)
+                                          .map((r) => (
+                                            <option key={r.id} value={r.id}>
+                                              {formatDateTime(r.saved_at)}
+                                            </option>
+                                          ))}
+                                      </select>
+                                    </label>
+                                  )}
+                                  {revViewMode === "diff" && (
                                     <span className="text-xs text-muted-foreground">
                                       {unchanged ? (
-                                        "No changes from the current version"
+                                        `No changes from the ${targetLabel}`
                                       ) : (
                                         <>
-                                          vs current:{" "}
                                           <span className="text-emerald-600 dark:text-emerald-400">
                                             +{added}
                                           </span>{" "}
@@ -501,10 +554,7 @@ export function SnippetDetail({
                                   )}
                                 </div>
                                 {revViewMode === "diff" ? (
-                                  <DiffBlock
-                                    oldText={rev.code}
-                                    newText={snippet.code}
-                                  />
+                                  <DiffBlock oldText={oldText} newText={newText} />
                                 ) : (
                                   <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs text-foreground">
                                     {rev.code}
