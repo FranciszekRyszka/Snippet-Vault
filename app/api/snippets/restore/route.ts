@@ -1,4 +1,4 @@
-import { db, rowToSnippet } from "@/lib/db";
+import { dbForRequest, rowToSnippet } from "@/lib/db";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
@@ -18,6 +18,7 @@ const validLanguages = new Set<string>(LANGUAGES.map((l) => l.value));
 // request can't inject a fractional copy_count (which would later break reads),
 // a "truthy" favorite, or an out-of-range timestamp.
 export async function POST(request: Request) {
+  const db = dbForRequest(request);
   try {
     const body = await request.json();
     const {

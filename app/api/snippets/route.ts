@@ -1,4 +1,4 @@
-import { db, rowToSnippet, type Snippet } from "@/lib/db";
+import { dbForRequest, rowToSnippet, type Snippet } from "@/lib/db";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   const search = searchParams.get("search");
   const tag = searchParams.get("tag");
   const searchMode = searchParams.get("searchMode") || "all";
+  const db = dbForRequest(request);
 
   try {
     // Trash view: return only the soft-deleted (tombstoned) rows, newest-deleted
@@ -92,6 +93,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const db = dbForRequest(request);
   try {
     const body = await request.json();
     const { title, description, code, language, tags, model, kind } = body;

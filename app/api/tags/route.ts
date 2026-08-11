@@ -1,4 +1,4 @@
-import { rewriteTag } from "@/lib/db";
+import { dbForRequest, rewriteTag } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 // Rename, merge, or delete a tag library-wide.
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     // Absent or null `to` means delete; a string renames/merges. Any other type
     // is treated as a delete rather than erroring.
     const to = typeof body?.to === "string" ? body.to : null;
-    const changed = rewriteTag(from, to);
+    const changed = rewriteTag(dbForRequest(request), from, to);
     return NextResponse.json({ changed });
   } catch (error) {
     console.error("Failed to rewrite tag:", error);

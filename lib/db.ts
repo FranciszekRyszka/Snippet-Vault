@@ -3,32 +3,54 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "path";
 
-// The SQLite file location. Defaults to ./data/snippets.db under the current
-// working directory (the Docker image mounts a volume there). Set
-// SNIPVAULT_DB_PATH to relocate it — used by the API test harness to run
-// against a disposable database, and handy for self-hosters who want the file
-// somewhere specific.
-const dbPath = process.env.SNIPVAULT_DB_PATH
+// Base directory for on-disk data. Defaults to ./data under the current working
+// directory (the Docker image mounts a volume there). SNIPVAULT_DATA_DIR
+// relocates the whole tree — used by the multi-user test harness to run against
+// a disposable directory.
+const dataDir = process.env.SNIPVAULT_DATA_DIR
+  ? path.resolve(process.env.SNIPVAULT_DATA_DIR)
+  : path.join(process.cwd(), "data");
+
+// The default (single-tenant) SQLite file. SNIPVAULT_DB_PATH overrides its exact
+// location — used by the API test harness to run against a disposable database,
+// and handy for self-hosters who want the file somewhere specific. This
+// preserves the pre-multi-user layout exactly: ./data/snippets.db by default.
+const defaultDbPath = process.env.SNIPVAULT_DB_PATH
   ? path.resolve(process.env.SNIPVAULT_DB_PATH)
-  : path.join(process.cwd(), "data", "snippets.db");
+  : path.join(dataDir, "snippets.db");
 
-let connection: Database.Database | null = null;
+// Per-user vaults live under <dataDir>/users/<user>/snippets.db. Isolation is
+// structural: each user gets a private SQLite file, so no query needs an
+// `owner` filter and cross-user leakage is impossible by construction.
+const usersRoot = path.join(dataDir, "users");
 
-// Open the database on first use rather than at import time. `next build`
-// imports every API route module to collect page data; if the connection (with
-// its WAL setup and schema migration) opened at import, several build workers
-// would race to create the same fresh file and hit SQLITE_BUSY. Deferring to
-// the first real query means the DB opens only when a request actually runs.
-function getDb(): Database.Database {
-  if (connection) return connection;
+// User ids become path segments, so they're strictly validated — no traversal,
+// no surprises. Mirrors the validation in proxy.ts.
+const USER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
-  // Ensure the parent directory exists. The default ./data is normally present,
-  // but a custom SNIPVAULT_DB_PATH (or a fresh checkout) may point somewhere
-  // that isn't created yet; better-sqlite3 would otherwise throw on open.
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// Resolve the on-disk path for a user. `null`/"default" → the single-tenant
+// default file (unchanged behaviour). Any other id is validated and mapped
+// under the users root; the resolved path is then asserted to stay inside that
+// root as a second guard against traversal.
+export function dbPathForUser(user: string | null): string {
+  if (user === null || user === "default") return defaultDbPath;
+  if (!USER_ID_RE.test(user)) throw new Error("Invalid user id");
+  const resolved = path.join(usersRoot, user, "snippets.db");
+  const rootWithSep = usersRoot.endsWith(path.sep)
+    ? usersRoot
+    : usersRoot + path.sep;
+  if (!resolved.startsWith(rootWithSep)) throw new Error("Invalid user path");
+  return resolved;
+}
 
-  const conn = new Database(dbPath);
+// One open connection per resolved db path. better-sqlite3 handles are cheap, so
+// for a homeserver's handful of users an unbounded cache is fine (an LRU is a
+// later upgrade if a deployment ever grows large).
+const connections = new Map<string, Database.Database>();
 
+// Apply pragmas, schema, and migrations to a freshly opened connection. Every
+// per-user file goes through the exact same path, so all vaults share one schema.
+function initConnection(conn: Database.Database): void {
   // Wait (rather than failing instantly) if another connection holds a write
   // lock — mirrors the desktop (rusqlite) backend's 5s timeout and keeps
   // overlapping requests on the sync server from erroring.
@@ -112,19 +134,50 @@ function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_revisions_uuid ON snippet_revisions(snippet_uuid, id);
   `);
+}
 
-  connection = conn;
-  return connection;
+// Open the database on first use rather than at import time. `next build`
+// imports every API route module to collect page data; if a connection (with
+// its WAL setup and schema migration) opened at import, several build workers
+// would race to create the same fresh file and hit SQLITE_BUSY. Deferring to
+// the first real query means a DB opens only when a request actually runs.
+function openDbAt(dbPath: string): Database.Database {
+  const cached = connections.get(dbPath);
+  if (cached) return cached;
+
+  // Ensure the parent directory exists. The default ./data is normally present,
+  // but a custom path (or a per-user subdir on first use) may not be created
+  // yet; better-sqlite3 would otherwise throw on open.
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+  const conn = new Database(dbPath);
+  initConnection(conn);
+  connections.set(dbPath, conn);
+  return conn;
+}
+
+// The connection for a given user (`null`/"default" → the single-tenant file).
+export function getDbForUser(user: string | null): Database.Database {
+  return openDbAt(dbPathForUser(user));
+}
+
+// The connection for a request, routed by the middleware-resolved user. The
+// `x-snipvault-user` header is set (and any inbound copy stripped) by proxy.ts;
+// a missing header means single-tenant / dev → the default file.
+export function dbForRequest(req: Request): Database.Database {
+  const user = req.headers.get("x-snipvault-user");
+  return getDbForUser(user && user.length ? user : null);
 }
 
 // How many past revisions to keep per snippet (older ones pruned on capture).
 export const REVISION_KEEP = 50;
 
-// Lazy handle: callers keep using `db.prepare(...)` / `db.exec(...)` unchanged,
-// but the underlying connection only opens on first property access.
+// Lazy handle for the default vault: non-request code keeps using
+// `db.prepare(...)` / `db.exec(...)` unchanged, but the underlying connection
+// only opens on first property access. Request handlers use `dbForRequest`.
 export const db: Database.Database = new Proxy({} as Database.Database, {
   get(_target, prop) {
-    const real = getDb();
+    const real = getDbForUser(null);
     const value = Reflect.get(real as object, prop, real);
     return typeof value === "function" ? value.bind(real) : value;
   },
@@ -208,6 +261,7 @@ function rowToRevision(row: Record<string, unknown>): SnippetRevision {
 // Prunes to the newest REVISION_KEEP. `current` is the live row; `next` is the
 // already-sanitized incoming values.
 export function captureRevisionIfChanged(
+  conn: Database.Database,
   current: Record<string, unknown>,
   next: {
     title: string;
@@ -230,7 +284,7 @@ export function captureRevisionIfChanged(
     ((current.model as string) ?? "") === next.model &&
     ((current.kind as string) ?? "prompt") === next.kind;
   if (unchanged) return;
-  db.prepare(
+  conn.prepare(
     `INSERT INTO snippet_revisions
        (snippet_uuid, title, description, code, language, tags, model, kind, saved_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -245,7 +299,7 @@ export function captureRevisionIfChanged(
     (current.kind as string) ?? "prompt",
     (current.updated_at as string) ?? ""
   );
-  db.prepare(
+  conn.prepare(
     `DELETE FROM snippet_revisions
      WHERE snippet_uuid = ?
        AND id NOT IN (
@@ -261,21 +315,25 @@ export function captureRevisionIfChanged(
 // rewritten, each with `updated_at` bumped so the change syncs (newest-wins).
 // `from`/`to` are trimmed + lowercased to match the app's tag convention.
 // Returns how many rows changed.
-export function rewriteTag(fromRaw: string, toRaw: string | null): number {
+export function rewriteTag(
+  conn: Database.Database,
+  fromRaw: string,
+  toRaw: string | null
+): number {
   const from = fromRaw.trim().toLowerCase();
   if (!from) return 0;
   const to = toRaw == null ? null : toRaw.trim().toLowerCase() || null;
   if (to === from) return 0; // renaming to itself is a no-op
 
-  const rows = db
+  const rows = conn
     .prepare(`SELECT id, tags FROM snippets WHERE deleted = 0`)
     .all() as { id: number; tags: string }[];
 
-  const update = db.prepare(
+  const update = conn.prepare(
     `UPDATE snippets SET tags = ?, updated_at = datetime('now') WHERE id = ?`
   );
 
-  const apply = db.transaction(() => {
+  const apply = conn.transaction(() => {
     let changed = 0;
     for (const row of rows) {
       const tags = parseTags(row.tags);
@@ -296,8 +354,11 @@ export function rewriteTag(fromRaw: string, toRaw: string | null): number {
 }
 
 // Past versions of the snippet with the given autoincrement id, newest first.
-export function getRevisionsForId(id: number): SnippetRevision[] {
-  const rows = db
+export function getRevisionsForId(
+  conn: Database.Database,
+  id: number
+): SnippetRevision[] {
+  const rows = conn
     .prepare(
       `SELECT r.* FROM snippet_revisions r
        JOIN snippets s ON s.uuid = r.snippet_uuid

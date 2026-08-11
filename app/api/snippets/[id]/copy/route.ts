@@ -1,10 +1,10 @@
-import { db, rowToSnippet } from "@/lib/db";
+import { dbForRequest, rowToSnippet } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { parseId } from "@/lib/api-utils";
 
 // Record that a snippet was copied: bump its usage count and stamp the time.
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -12,6 +12,7 @@ export async function POST(
   if (numericId === null) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
+  const db = dbForRequest(request);
   try {
     const stmt = db.prepare(
       "UPDATE snippets SET copy_count = copy_count + 1, last_used_at = datetime('now') WHERE id = ? AND deleted = 0"

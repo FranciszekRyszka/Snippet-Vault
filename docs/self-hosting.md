@@ -145,6 +145,59 @@ A couple of things worth knowing:
 
 ---
 
+## Multiple users (one server, private vaults)
+
+By default the server is **single-user**: one `SNIPVAULT_TOKEN` guards one shared
+library. To let several people share the same server while keeping their snippets
+**private to each of them**, set `SNIPVAULT_TOKENS` instead — a comma-separated
+list of `user:token` pairs:
+
+```bash
+# in .env — generate one token per user, e.g. openssl rand -base64 32
+SNIPVAULT_TOKENS=alice:ALICE_TOKEN,bob:BOB_TOKEN
+```
+
+Each user gets their **own** database file under `data/users/<user>/snippets.db`.
+Isolation is *structural* — every request is routed to the caller's own file by
+their token, so one user physically cannot read or sync another's data. User ids
+may contain letters, digits, `_` and `-` (1–64 characters).
+
+- **Nothing changes in the desktop app** — each person just enters the server URL
+  and **their own** token in **Settings → Sync server**.
+- **Precedence:** if both `SNIPVAULT_TOKENS` and `SNIPVAULT_TOKEN` are set, the
+  multi-user list wins and the single token is ignored.
+- **Adding/removing a user** = edit `SNIPVAULT_TOKENS` and restart the server.
+- **The `./data` volume already persists everything**, including per-user files.
+- **Migrating an existing single-user library:** either keep it as-is (it stays
+  the default single-user file), or move `data/snippets.db` to
+  `data/users/<user>/snippets.db` to hand it to a named user.
+
+With several people's data on one box, **use HTTPS** (see below) and give each
+user a strong, unique token.
+
+---
+
+## HTTPS with Caddy
+
+Traffic is plain HTTP by default, which is usually fine on a trusted home LAN.
+Once the server is reachable more widely — or shared between several users — put
+a reverse proxy in front to terminate **HTTPS**. `docker-compose.yml` ships a
+commented-out **`caddy`** service that does this with automatic Let's Encrypt
+certificates:
+
+```bash
+cp Caddyfile.example Caddyfile      # set your domain + email inside
+# then in docker-compose.yml: uncomment the `caddy` service and REMOVE the
+# `ports:` mapping on the `snipvault` service (Caddy becomes the public entry).
+docker compose up -d
+```
+
+Your domain must resolve to the host and ports 80 + 443 must be reachable. Point
+each desktop app at `https://<your-domain>` (no `:3000`). Certificates are stored
+in the `caddy-data` volume so they survive restarts.
+
+---
+
 ## Backing up the server
 
 The whole library is a single SQLite file. On the server that's the file
@@ -189,12 +242,19 @@ Your external backup tool can then simply watch `./backups/`.
 
 ## Security notes
 
-- **Always set `SNIPVAULT_TOKEN` on a real deployment.** With no token the API
-  is open to anyone who can reach the server — anyone on your network could read
-  and modify your library.
-- The token is checked in constant time and required on every `/api` request.
-- Traffic is **plain HTTP**. On a trusted home LAN that is usually fine. If you
-  expose the server more widely, put a reverse proxy (Caddy, nginx, Traefik) in
-  front to terminate **HTTPS**, and point the app at the `https://` URL.
+- **Always set a token on a real deployment** (`SNIPVAULT_TOKEN`, or
+  `SNIPVAULT_TOKENS` for multiple users). With neither set, a production server
+  refuses every request rather than exposing the library.
+- Tokens are checked in **constant time** on every `/api` request, and each is
+  scanned in full so timing can't reveal which user matched.
+- **Brute force is rate-limited.** Repeated failed auth attempts from one client
+  are throttled with a `429` (tune via `SNIPVAULT_RATELIMIT_MAX` /
+  `SNIPVAULT_RATELIMIT_WINDOW_MS`). Valid clients are never throttled. Behind a
+  reverse proxy this relies on the `X-Forwarded-For` header being set (Caddy does).
+- Traffic is **plain HTTP** unless you front it with TLS. On a trusted home LAN
+  that's usually fine; expose it more widely and you should use HTTPS — see
+  [HTTPS with Caddy](#https-with-caddy).
 - Don't forward the port to the public internet unless you know what you're
   doing — a token over plain HTTP is not enough protection on the open web.
+- **Richer status:** `GET /api/status` (token-gated, per-user) returns the
+  library size, last-write time, and server version — handy for monitoring.

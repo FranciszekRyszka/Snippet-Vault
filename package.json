@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "2.15.3",
+  "version": "3.0.0",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "test": "pnpm test:unit && pnpm test:api",
     "test:unit": "vitest run",
-    "test:api": "node test/run-api-tests.mjs",
+    "test:api": "node test/run-api-tests.mjs && node test/run-multiuser-tests.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

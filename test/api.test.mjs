@@ -62,6 +62,26 @@ test("rejects a missing/bad token", async () => {
   assert.equal(res.status, 401);
 });
 
+test("rate-limits repeated bad-token attempts with a 429", async () => {
+  // Only meaningful when the server is token-protected.
+  if (!TOKEN) return;
+  // Use a dedicated client bucket (x-forwarded-for) so tripping the limit here
+  // can't throttle the rest of the suite, which sends no forwarded-for. The
+  // runner sets SNIPVAULT_RATELIMIT_MAX=5, so the 6th failure is blocked.
+  const ip = "203.0.113." + Math.floor(Math.random() * 200 + 1);
+  const bad = () =>
+    fetch(`${BASE}/api/health`, {
+      headers: { Authorization: "Bearer wrong-token", "x-forwarded-for": ip },
+    });
+  for (let i = 0; i < 5; i++) {
+    const res = await bad();
+    assert.equal(res.status, 401, `attempt ${i + 1} should be a plain 401`);
+  }
+  const blocked = await bad();
+  assert.equal(blocked.status, 429, "the 6th failure should be rate-limited");
+  assert.ok(blocked.headers.get("retry-after"), "429 carries a Retry-After");
+});
+
 test("create defaults kind to prompt and returns a uuid", async () => {
   const { status, body } = await create({ title: "test create" });
   assert.equal(status, 201);

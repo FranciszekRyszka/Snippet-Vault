@@ -1,4 +1,4 @@
-import { db, rowToSnippet, captureRevisionIfChanged } from "@/lib/db";
+import { dbForRequest, rowToSnippet, captureRevisionIfChanged } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
 import { parseId, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api-utils";
@@ -14,6 +14,7 @@ export async function PUT(
   if (numericId === null) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
+  const db = dbForRequest(request);
   try {
     const body = await request.json();
     const { title, description, code, language, tags, model, kind } = body;
@@ -51,7 +52,7 @@ export async function PUT(
         .prepare("SELECT * FROM snippets WHERE id = ?")
         .get(numericId) as Record<string, unknown> | undefined;
       if (!current) return 0;
-      captureRevisionIfChanged(current, {
+      captureRevisionIfChanged(db, current, {
         title,
         description: description || "",
         code,
@@ -110,6 +111,7 @@ export async function PATCH(
   if (numericId === null) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
+  const db = dbForRequest(request);
   try {
     const body = await request.json();
     const { favorite } = body;
@@ -146,7 +148,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -154,6 +156,7 @@ export async function DELETE(
   if (numericId === null) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
+  const db = dbForRequest(request);
   try {
     // Soft-delete: flag the row as a tombstone and bump updated_at so the
     // deletion propagates to other machines on the next sync. The row itself

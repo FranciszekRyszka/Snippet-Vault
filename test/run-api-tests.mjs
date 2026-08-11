@@ -84,6 +84,10 @@ const server = spawn(
       NODE_ENV: "production",
       SNIPVAULT_TOKEN: TOKEN,
       SNIPVAULT_DB_PATH: DB_PATH,
+      // A low failure ceiling so the rate-limit test trips quickly. The test
+      // uses a dedicated x-forwarded-for bucket, so it can't throttle the rest
+      // of the suite (which sends no forwarded-for → the "global" bucket).
+      SNIPVAULT_RATELIMIT_MAX: "5",
       PORT,
     },
   }

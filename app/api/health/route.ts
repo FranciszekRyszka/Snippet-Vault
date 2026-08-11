@@ -1,10 +1,11 @@
-import { db } from "@/lib/db";
+import { dbForRequest } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 // Lightweight liveness/auth probe used by the desktop app's "Test & connect"
 // button. Reaching this route past the auth middleware already proves the token
 // is valid; the snippet count is a cheap confirmation the database is readable.
-export async function GET() {
+export async function GET(request: Request) {
+  const db = dbForRequest(request);
   try {
     const row = db.prepare("SELECT COUNT(*) AS count FROM snippets").get() as {
       count: number;

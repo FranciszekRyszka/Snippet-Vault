@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbForRequest } from "@/lib/db";
 import { NextResponse } from "next/server";
 import {
   sanitizeTags,
@@ -128,6 +128,7 @@ function normalizeIncoming(raw: unknown): {
 //      newest-wins rule locally.
 // Both sides converge to the union of records with the most recent edits.
 export async function POST(request: Request) {
+  const db = dbForRequest(request);
   try {
     // Reject oversized pushes before buffering/parsing. Trust the declared
     // Content-Length for a fast early-out, then re-check the actual bytes (a

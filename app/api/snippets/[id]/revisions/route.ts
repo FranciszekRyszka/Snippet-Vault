@@ -1,11 +1,11 @@
-import { getRevisionsForId } from "@/lib/db";
+import { dbForRequest, getRevisionsForId } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { parseId } from "@/lib/api-utils";
 
 // Past versions of a snippet (prompt history), newest first. Local to this
 // database — revisions aren't synced.
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -14,7 +14,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
   try {
-    return NextResponse.json(getRevisionsForId(numericId));
+    return NextResponse.json(getRevisionsForId(dbForRequest(request), numericId));
   } catch (error) {
     console.error("Failed to fetch revisions:", error);
     return NextResponse.json(

@@ -24,11 +24,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # The access token every SnipVault app must present to reach this server.
-      # Don't hard-code it here — set SNIPVAULT_TOKEN in your .env file (Docker
-      # Compose loads .env automatically). See .env.example for how to generate
-      # one. The server won't start until it's set, so the API is never left open.
-      SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:?missing SNIPVAULT_TOKEN — set it in .env (see .env.example)}
+      # Auth — set ONE of these in your .env (Docker Compose loads it automatically):
+      #   * SNIPVAULT_TOKEN  — one shared library behind a single token (typical).
+      #   * SNIPVAULT_TOKENS — multiple users, each with a private vault
+      #                        ("alice:tokA,bob:tokB"); takes precedence if both set.
+      # See .env.example for how to generate tokens. If NEITHER is set, the server
+      # refuses every /api request (503) rather than exposing the library, so it's
+      # never left open by accident.
+      SNIPVAULT_TOKEN: ${SNIPVAULT_TOKEN:-}
+      SNIPVAULT_TOKENS: ${SNIPVAULT_TOKENS:-}
     volumes:
       - snipvault-data:/app/data
     # Poll the DB-backed health endpoint. It's behind the token gate, so the
@@ -76,6 +80,33 @@ services:
   #         sleep 86400;
   #       done
 
+  # Optional: HTTPS via Caddy (automatic Let's Encrypt certificates). Matters
+  # more once several users share one box, or whenever the server is reachable
+  # beyond a trusted LAN. To enable:
+  #   1. cp Caddyfile.example Caddyfile  and set your domain + email in it.
+  #   2. REMOVE the `ports:` mapping on the `snipvault` service above so it's only
+  #      reachable inside this compose network — Caddy is the public entrypoint.
+  #   3. docker compose up -d
+  #   4. Point the desktop app at https://<your-domain> (no :3000).
+  # caddy:
+  #   image: caddy:2
+  #   container_name: snipvault-caddy
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - snipvault
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data          # persisted certificates — don't lose this
+  #     - caddy-config:/config
+  #   logging:
+  #     driver: json-file
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
   # Optional: a lightweight web log viewer for this host's containers. Uncomment
   # to run it alongside SnipVault, then open http://<this-host>:8080. It reads the
   # Docker socket read-only. You typically run just one Dozzle per host, so skip
@@ -91,3 +122,7 @@ services:
 
 volumes:
   snipvault-data:
+  # Used only when the optional Caddy service above is enabled (stores the
+  # issued TLS certificates so they survive restarts).
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,17 @@
+# Example Caddy config for fronting the SnipVault sync server with HTTPS.
+#
+# Copy this to `Caddyfile`, replace the domain and email, then enable the
+# commented `caddy` service in docker-compose.yml (and remove the `ports:`
+# mapping on the `snipvault` service so Caddy is the only public entrypoint).
+#
+# Caddy obtains and renews a Let's Encrypt certificate automatically, so your
+# domain must resolve to this host and ports 80 + 443 must be reachable.
+
+snipvault.example.com {
+	# Contact address for Let's Encrypt expiry notices.
+	tls you@example.com
+
+	# Proxy everything to the SnipVault container over the compose network.
+	# "snipvault" is the service name; 3000 is its internal port.
+	reverse_proxy snipvault:3000
+}

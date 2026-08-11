@@ -13,6 +13,41 @@ ships.
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-08-11
+
+Server-focused release: the self-hosted sync server can now host **several users
+on one machine**, each with a completely private library, plus a batch of
+hardening. **The desktop app is unchanged** — each person just enters their own
+token. Single-user servers keep working exactly as before; no data migration and
+no sync-protocol change.
+
+### Added
+- **Multi-user server.** Set `SNIPVAULT_TOKENS=alice:tokA,bob:tokB` (instead of a
+  single `SNIPVAULT_TOKEN`) and each user gets their **own** vault at
+  `data/users/<user>/snippets.db`, keyed by their own token. Isolation is
+  structural — every request is routed to the caller's own database file, so one
+  user physically cannot read or sync another's snippets. If both env vars are
+  set, the multi-user list takes precedence. Adding/removing a user is an env
+  edit plus a restart.
+- **Auth rate limiting.** Repeated failed authentication attempts from one client
+  are throttled with a `429` (sliding window, keyed by client IP) to blunt brute
+  force on a weak token. Valid clients are never throttled. Tunable via
+  `SNIPVAULT_RATELIMIT_MAX` / `SNIPVAULT_RATELIMIT_WINDOW_MS`.
+- **Richer `/api/status` endpoint.** A new token-gated, per-user status route
+  returns the library size, last-write time, and server version — useful for
+  monitoring. `/api/health` stays the minimal liveness probe.
+- **HTTPS via Caddy.** A ready-to-enable, commented `caddy` service in
+  `docker-compose.yml` plus `Caddyfile.example` terminate TLS with automatic
+  Let's Encrypt certificates — recommended once several users share one box.
+
+### Security
+- Multi-user token matching scans the whole list in **constant time** (no early
+  return), so response timing can't reveal which — or whether any — token
+  matched. The user id a request resolves to is derived solely from its token;
+  any client-supplied `x-snipvault-user` header is stripped, so it can't be
+  spoofed. User ids are strictly validated (`A–Z a–z 0–9 _ -`, 1–64 chars) so
+  they can't escape the per-user data directory.
+
 ## [2.15.3] — 2026-08-10
 
 ### Fixed
@@ -392,7 +427,8 @@ ships.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.3...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.3...v3.0.0
 [2.15.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...v2.15.3
 [2.15.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...v2.15.2
 [2.15.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.0...v2.15.1
