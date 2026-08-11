@@ -13,6 +13,13 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **Export the whole library as Markdown.** Alongside the JSON export (which is
+  re-importable), **Settings → Library** now has **Export Markdown** — one
+  readable `.md` document with every entry under a heading (its language and tags
+  as a meta line, prompts as prose and code snippets as fenced blocks), separated
+  by rules. Good for reading, sharing, or archiving your prompts outside the app.
+
 ## [3.3.0] — 2026-08-11
 
 ### Added

@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Palette,
   Keyboard,
+  FileDown,
 } from "lucide-react";
 import {
   getDatabasePath,
@@ -57,6 +58,7 @@ type SettingsDialogProps = {
   // Settings first, then runs — see the dashboard wiring.
   onImport: () => void;
   onExportLibrary: () => void;
+  onExportLibraryMarkdown: () => void;
   onOpenTrash: () => void;
 };
 
@@ -68,6 +70,7 @@ export function SettingsDialog({
   onDbChanged,
   onImport,
   onExportLibrary,
+  onExportLibraryMarkdown,
   onOpenTrash,
 }: SettingsDialogProps) {
   // Freeze the page behind the dialog so scrolling here never moves it.
@@ -443,7 +446,15 @@ export function SettingsDialog({
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 <Download className="h-4 w-4" />
-                Export library
+                Export JSON
+              </button>
+              <button
+                type="button"
+                onClick={onExportLibraryMarkdown}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <FileDown className="h-4 w-4" />
+                Export Markdown
               </button>
               <button
                 type="button"
@@ -456,8 +467,10 @@ export function SettingsDialog({
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               Import prompts from a JSON/.md/.txt file, export your whole library
-              as JSON, or restore recently deleted prompts from Trash. You can also
-              drag files onto the window to import.
+              as <strong>JSON</strong> (re-importable) or a single
+              <strong> Markdown</strong> document (readable/portable), or restore
+              recently deleted prompts from Trash. You can also drag files onto the
+              window to import.
             </p>
           </div>
 

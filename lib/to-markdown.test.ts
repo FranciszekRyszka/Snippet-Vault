@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toMarkdown } from "./to-markdown";
+import { toMarkdown, libraryToMarkdown } from "./to-markdown";
 
 describe("toMarkdown", () => {
   it("wraps a code snippet in a language-tagged fence", () => {
@@ -41,5 +41,52 @@ describe("toMarkdown", () => {
         kind: "prompt",
       })
     ).toBe("# Bare\n\nbody");
+  });
+});
+
+describe("libraryToMarkdown", () => {
+  it("renders a titled document with a summary and rule-separated entries", () => {
+    const doc = libraryToMarkdown(
+      [
+        {
+          title: "Greeter",
+          description: "says hi",
+          code: "Say hi to {{name}}",
+          language: "text",
+          kind: "prompt",
+          tags: ["social"],
+        },
+        {
+          title: "Snippet",
+          code: "const x = 1;",
+          language: "javascript",
+          kind: "code",
+        },
+      ],
+      "2026-08-11"
+    );
+    expect(doc).toBe(
+      "# SnipVault library\n\n" +
+        "_2 entries · exported 2026-08-11_\n\n" +
+        "---\n\n" +
+        "## Greeter\n\n_#social_\n\nsays hi\n\nSay hi to {{name}}\n\n" +
+        "---\n\n" +
+        "## Snippet\n\n_javascript_\n\n```javascript\nconst x = 1;\n```"
+    );
+  });
+
+  it("gives every entry a ## heading, including code snippets", () => {
+    const doc = libraryToMarkdown([
+      { title: "Only code", code: "echo hi", language: "bash", kind: "code" },
+    ]);
+    expect(doc).toContain("## Only code");
+    expect(doc).toContain("```bash\necho hi\n```");
+  });
+
+  it("singularizes the summary and omits the date when not given", () => {
+    const doc = libraryToMarkdown([
+      { title: "One", code: "body", language: "text", kind: "prompt" },
+    ]);
+    expect(doc.startsWith("# SnipVault library\n\n_1 entry_\n\n---\n\n")).toBe(true);
   });
 });

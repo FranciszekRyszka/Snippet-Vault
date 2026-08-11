@@ -18,6 +18,7 @@ import { CommandPalette } from "./command-palette";
 import { BulkActionsBar } from "./bulk-actions-bar";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { extractVars } from "@/lib/prompt-vars";
+import { libraryToMarkdown } from "@/lib/to-markdown";
 import { UpdateBanner } from "./update-banner";
 import {
   checkForUpdate,
@@ -821,6 +822,41 @@ export function SnippetsDashboard() {
     }
   }, [showNotice, showError]);
 
+  // Export the whole library as a single Markdown document (readable/portable,
+  // not re-importable — that's what the JSON export is for). Reuses the same
+  // download + toast flow.
+  const handleExportLibraryMarkdown = useCallback(async () => {
+    try {
+      const records = await exportLibrary();
+      if (records.length === 0) {
+        showNotice("Nothing to export yet — your library is empty.");
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const md = libraryToMarkdown(records, today);
+      const filename = `snipvault-library-${today}.md`;
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showNotice(
+        `Exported ${records.length} ${
+          records.length === 1 ? "entry" : "entries"
+        } as Markdown to your Downloads folder (${filename}).`
+      );
+    } catch (err) {
+      console.error("Markdown library export failed:", err);
+      showError(
+        err instanceof Error ? err.message : "Couldn't export the library."
+      );
+    }
+  }, [showNotice, showError]);
+
   // Whether a parsed file is a whole-library export: an array of sync records,
   // each carrying a uuid and a timestamp. Those merge by uuid (newest wins) via
   // the sync path, so re-importing updates in place instead of duplicating.
@@ -1541,6 +1577,10 @@ export function SnippetsDashboard() {
           onExportLibrary={() => {
             setShowSettings(false);
             handleExportLibrary();
+          }}
+          onExportLibraryMarkdown={() => {
+            setShowSettings(false);
+            handleExportLibraryMarkdown();
           }}
           onOpenTrash={() => {
             setShowSettings(false);
