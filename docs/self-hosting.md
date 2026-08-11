@@ -177,24 +177,58 @@ user a strong, unique token.
 
 ---
 
-## HTTPS with Caddy
+## HTTPS with a reverse proxy
 
 Traffic is plain HTTP by default, which is usually fine on a trusted home LAN.
 Once the server is reachable more widely — or shared between several users — put
-a reverse proxy in front to terminate **HTTPS**. `docker-compose.yml` ships a
-commented-out **`caddy`** service that does this with automatic Let's Encrypt
-certificates:
+a reverse proxy in front to terminate **HTTPS**. `docker-compose.yml` ships
+ready-to-enable, commented services for **three** proxies; pick **one**.
+
+Whichever you choose, the steps are the same shape:
+
+1. Your domain must resolve to the host, and ports **80 + 443** must be reachable.
+2. In `docker-compose.yml`, **remove the `ports:` mapping on the `snipvault`
+   service** so it's only reachable inside the compose network — the proxy
+   becomes the public entrypoint.
+3. Bring it up (`docker compose up -d`) and point each desktop app at
+   `https://<your-domain>` (no `:3000`).
+
+All three forward the client IP in `X-Forwarded-For`, which the server's auth
+rate-limiter uses to tell callers apart.
+
+### Caddy (simplest — automatic certificates)
 
 ```bash
 cp Caddyfile.example Caddyfile      # set your domain + email inside
-# then in docker-compose.yml: uncomment the `caddy` service and REMOVE the
-# `ports:` mapping on the `snipvault` service (Caddy becomes the public entry).
+# uncomment the `caddy` service in docker-compose.yml, then:
 docker compose up -d
 ```
 
-Your domain must resolve to the host and ports 80 + 443 must be reachable. Point
-each desktop app at `https://<your-domain>` (no `:3000`). Certificates are stored
-in the `caddy-data` volume so they survive restarts.
+Caddy obtains and renews a Let's Encrypt certificate automatically; it's stored
+in the `caddy-data` volume so it survives restarts.
+
+### Traefik (automatic certificates, Docker labels)
+
+Uncomment the `traefik` service, set the ACME email in its `command:`, and add
+the `traefik.*` **labels** shown in the compose file to the `snipvault` service
+(set your domain in the `Host(...)` rule). Traefik discovers the container via
+those labels and provisions a Let's Encrypt cert automatically (stored in the
+`traefik-letsencrypt` volume). Then `docker compose up -d`.
+
+### nginx (you supply the certificates)
+
+nginx doesn't provision certificates itself — obtain them first (e.g. with
+[certbot](https://certbot.eff.org/)) and drop `fullchain.pem` + `privkey.pem`
+into `./certs`:
+
+```bash
+cp nginx.example.conf nginx.conf    # set your domain inside
+# put fullchain.pem + privkey.pem in ./certs, uncomment the `nginx` service, then:
+docker compose up -d
+```
+
+> The example config sets `client_max_body_size 32m` — nginx's 1 MB default
+> would reject a large sync push, so don't drop that line.
 
 ---
 

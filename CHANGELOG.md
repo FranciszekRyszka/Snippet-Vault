@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **nginx and Traefik reverse-proxy examples** for terminating HTTPS, alongside
+  the existing Caddy option — self-hosters can pick whichever proxy they prefer.
+  `docker-compose.yml` now carries commented, ready-to-enable `nginx` and
+  `traefik` services (plus `nginx.example.conf`), and `docs/self-hosting.md`
+  documents all three. The nginx example raises `client_max_body_size` so large
+  sync pushes aren't rejected, and every option forwards `X-Forwarded-For` for
+  the auth rate-limiter.
+
 ## [3.0.0] — 2026-08-11
 
 Server-focused release: the self-hosted sync server can now host **several users
