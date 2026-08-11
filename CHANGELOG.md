@@ -13,6 +13,18 @@ ships.
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-08-11
+
+### Added
+- **Tray quick-capture (desktop).** SnipVault now lives in the system tray and
+  responds to a global hotkey (default **Ctrl/⌘+Shift+V**) that pops up a small,
+  always-on-top window from anywhere — no need to switch to the full app. Two
+  modes: **Capture** (paste or type a prompt and save it, ⌘/Ctrl+Enter) and
+  **Find & copy** (fuzzy-search your library and copy an entry to the clipboard).
+  Closing the pop-up just hides it; the tray menu offers Quick capture, Open, and
+  Quit. Configure the hotkey or turn the feature off in **Settings → Quick
+  capture**. Desktop-only; the web app and sync are unaffected.
+
 ## [3.0.1] — 2026-08-11
 
 ### Added
@@ -438,7 +450,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.1...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.3...v3.0.0
 [2.15.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...v2.15.3

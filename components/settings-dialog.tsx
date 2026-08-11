@@ -17,6 +17,7 @@ import {
   Archive,
   RotateCcw,
   Palette,
+  Keyboard,
 } from "lucide-react";
 import {
   getDatabasePath,
@@ -31,6 +32,8 @@ import {
   getSyncServer,
   saveSyncServer,
   removeSyncServer,
+  getQuickCaptureSettings,
+  setQuickCaptureSettings,
   isTauri,
   type SyncServer,
 } from "@/lib/tauri-api";
@@ -92,6 +95,14 @@ export function SettingsDialog({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
+  // --- Quick capture (tray + global hotkey) ---
+  const [quickEnabled, setQuickEnabled] = useState(true);
+  const [quickShortcut, setQuickShortcut] = useState("");
+  const [quickDefault, setQuickDefault] = useState("CmdOrCtrl+Shift+V");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickNotice, setQuickNotice] = useState<string | null>(null);
+
   // --- Updates ---
   const [version, setVersion] = useState<string>("");
   const [autoCheck, setAutoCheck] = useState(true);
@@ -113,6 +124,13 @@ export function SettingsDialog({
       .catch(() => setAutoBackup(false));
     getAppVersion().then(setVersion).catch(() => setVersion(""));
     setAutoCheck(isAutoUpdateEnabled());
+    getQuickCaptureSettings()
+      .then((s) => {
+        setQuickEnabled(s.enabled);
+        setQuickShortcut(s.shortcut);
+        setQuickDefault(s.default_shortcut);
+      })
+      .catch(() => {});
     getSyncServer()
       .then((s) => {
         setServer(s);
@@ -187,6 +205,41 @@ export function SettingsDialog({
   const toggleAutoCheck = (enabled: boolean) => {
     setAutoCheck(enabled);
     setAutoUpdateEnabled(enabled);
+  };
+
+  // Enable/disable quick capture. Optimistic; reverts on failure.
+  const toggleQuick = async (enabled: boolean) => {
+    setQuickError(null);
+    setQuickNotice(null);
+    setQuickEnabled(enabled);
+    setQuickBusy(true);
+    try {
+      const s = await setQuickCaptureSettings(enabled, quickShortcut || null);
+      setQuickShortcut(s.shortcut);
+      setQuickNotice(enabled ? "Quick capture enabled." : "Quick capture disabled.");
+    } catch (err) {
+      setQuickEnabled(!enabled);
+      setQuickError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQuickBusy(false);
+    }
+  };
+
+  // Save the (possibly edited) global hotkey. Rust validates + registers it
+  // before persisting, so an invalid accelerator surfaces here and isn't saved.
+  const saveQuickShortcut = async (shortcut: string) => {
+    setQuickError(null);
+    setQuickNotice(null);
+    setQuickBusy(true);
+    try {
+      const s = await setQuickCaptureSettings(quickEnabled, shortcut || null);
+      setQuickShortcut(s.shortcut);
+      setQuickNotice(`Hotkey set to ${s.shortcut}.`);
+    } catch (err) {
+      setQuickError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQuickBusy(false);
+    }
   };
 
   const handleCheckUpdate = async () => {
@@ -512,6 +565,78 @@ export function SettingsDialog({
             {syncError && (
               <p className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {syncError}
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-border pt-5">
+            <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Keyboard className="h-4 w-4" />
+              Quick capture
+            </label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              A background tray icon and a global hotkey that pops up a small
+              window to save a prompt — or find and copy one — without switching
+              to SnipVault. Closing that window just hides it; quit from the tray.
+            </p>
+
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={quickEnabled}
+                disabled={quickBusy}
+                onChange={(e) => toggleQuick(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Enable the global hotkey
+            </label>
+
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={quickDefault}
+                value={quickShortcut}
+                disabled={quickBusy || !quickEnabled}
+                onChange={(e) => setQuickShortcut(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveQuickShortcut(quickShortcut);
+                }}
+                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => saveQuickShortcut(quickShortcut)}
+                disabled={quickBusy || !quickEnabled}
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {quickBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Set hotkey
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Use accelerator syntax like{" "}
+              <span className="font-mono">{quickDefault}</span> —{" "}
+              <span className="font-mono">CmdOrCtrl</span>,{" "}
+              <span className="font-mono">Shift</span>,{" "}
+              <span className="font-mono">Alt</span> plus a key. Leave blank to
+              use the default.
+            </p>
+
+            {quickNotice && (
+              <p className="mt-2 flex items-start gap-1.5 rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {quickNotice}
+              </p>
+            )}
+            {quickError && (
+              <p className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {quickError}
               </p>
             )}
           </div>

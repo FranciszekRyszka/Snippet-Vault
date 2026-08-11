@@ -509,3 +509,54 @@ export async function setBackupSettings(
 ): Promise<void> {
   await invoke("set_backup_settings", { autoBackup, keep: keep ?? null });
 }
+
+// ---- Quick capture (desktop only) -----------------------------------------
+//
+// A background tray presence + a global hotkey that summons a small always-on-
+// top window to paste-and-save or find-and-copy a prompt without switching to
+// the full app. The hotkey/tray live in Rust; these helpers configure them and
+// let the quick window dismiss itself.
+
+export type QuickCaptureSettings = {
+  enabled: boolean;
+  // The active global-hotkey accelerator, e.g. "CmdOrCtrl+Shift+V".
+  shortcut: string;
+  // The built-in default, so the UI can offer a one-tap reset.
+  default_shortcut: string;
+};
+
+export async function getQuickCaptureSettings(): Promise<QuickCaptureSettings> {
+  return invoke<QuickCaptureSettings>("get_quick_capture_settings");
+}
+
+// Enable/disable quick capture and set the hotkey. Rust registers the new
+// hotkey before saving, so an invalid accelerator throws and nothing persists.
+// Returns the resolved settings (a blank shortcut falls back to the default).
+export async function setQuickCaptureSettings(
+  enabled: boolean,
+  shortcut?: string | null
+): Promise<QuickCaptureSettings> {
+  return invoke<QuickCaptureSettings>("set_quick_capture_settings", {
+    enabled,
+    shortcut: shortcut ?? null,
+  });
+}
+
+// Hide the current (quick-capture) window. No-op outside Tauri.
+export async function hideQuickWindow(): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().hide();
+}
+
+// Whether this webview is the quick-capture window (routing branches on it).
+// Reads the window label, which is embedded in the webview — no IPC/permission.
+export async function isQuickWindow(): Promise<boolean> {
+  if (!isTauri()) return false;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    return getCurrentWindow().label === "quick";
+  } catch {
+    return false;
+  }
+}

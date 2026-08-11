@@ -1,5 +1,5 @@
-import { SnippetsDashboard } from "@/components/snippets-dashboard";
+import { AppRoot } from "@/components/app-root";
 
 export default function Page() {
-  return <SnippetsDashboard />;
+  return <AppRoot />;
 }

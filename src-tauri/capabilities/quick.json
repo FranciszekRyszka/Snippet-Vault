@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schemas.tauri.app/config/2/capability.json",
+  "identifier": "quick",
+  "description": "Capability for the quick-capture pop-up window. It invokes the app's own snippet commands and hides itself (Esc / after save); it needs none of the main window's dialog/updater/opener/http access.",
+  "windows": ["quick"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide"
+  ]
+}

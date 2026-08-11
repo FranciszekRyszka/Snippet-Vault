@@ -24,7 +24,7 @@ struct RemoteConfig {
 /// Persisted app configuration: the local database location and, optionally, a
 /// sync server. Both can be set at once — the remote is what's *active*, and
 /// clearing it falls back to the local database.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize)]
 struct AppConfig {
     db_path: Option<String>,
     #[serde(default)]
@@ -36,11 +36,51 @@ struct AppConfig {
     /// How many snapshots to keep when pruning. 0 means "unset" → the default.
     #[serde(default)]
     backup_keep: u32,
+    /// Whether the global quick-capture hotkey + tray shortcut are active. On by
+    /// default (also for configs written before this field existed).
+    #[serde(default = "default_true")]
+    quick_capture_enabled: bool,
+    /// The global hotkey accelerator (e.g. "CmdOrCtrl+Shift+V"). `None` → the
+    /// built-in default.
+    #[serde(default)]
+    quick_capture_shortcut: Option<String>,
+}
+
+// A hand-written Default (rather than derive) so a brand-new install — where
+// load_config() falls back to Default — gets quick capture ON, matching the
+// serde field default used for existing configs that predate the field.
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            db_path: None,
+            remote: None,
+            auto_backup: false,
+            backup_keep: 0,
+            quick_capture_enabled: true,
+            quick_capture_shortcut: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Default number of rotating snapshots to keep.
 fn default_backup_keep() -> u32 {
     10
+}
+
+/// The built-in quick-capture hotkey when the user hasn't chosen one.
+const DEFAULT_QUICK_SHORTCUT: &str = "CmdOrCtrl+Shift+V";
+
+/// The effective quick-capture accelerator: the user's choice, or the default.
+fn resolved_quick_shortcut(cfg: &AppConfig) -> String {
+    cfg.quick_capture_shortcut
+        .clone()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.to_string())
 }
 
 /// Reported to the frontend on startup to decide whether to show first-run setup.
@@ -566,6 +606,142 @@ fn apply_sync_records(state: State<Mutex<AppState>>, records: Vec<SyncRecord>) -
     db.apply_sync_records(records).map_err(|e| e.to_string())
 }
 
+// ---- Quick capture: tray, global hotkey, and the pop-up window ------------
+//
+// A background presence (system tray) plus a global hotkey that summons a small
+// always-on-top "quick capture" window — paste-and-save a prompt, or fuzzy-find
+// and copy one, without switching to the full app. The window is a second
+// webview that loads the same frontend bundle and branches on its window label
+// (`quick`). Desktop-only; the whole surface is `#[cfg(desktop)]`.
+
+/// The quick-capture settings surfaced to the Settings UI.
+#[derive(Serialize)]
+struct QuickCaptureSettings {
+    enabled: bool,
+    shortcut: String,
+    default_shortcut: String,
+}
+
+fn quick_capture_settings(cfg: &AppConfig) -> QuickCaptureSettings {
+    QuickCaptureSettings {
+        enabled: cfg.quick_capture_enabled,
+        shortcut: resolved_quick_shortcut(cfg),
+        default_shortcut: DEFAULT_QUICK_SHORTCUT.to_string(),
+    }
+}
+
+#[tauri::command]
+fn get_quick_capture_settings() -> QuickCaptureSettings {
+    quick_capture_settings(&load_config())
+}
+
+/// Enable/disable quick capture and set the global hotkey. The new hotkey is
+/// registered *before* the settings are saved, so an invalid accelerator is
+/// reported and nothing is persisted. Returns the resolved settings.
+#[tauri::command]
+fn set_quick_capture_settings(
+    app: tauri::AppHandle,
+    enabled: bool,
+    shortcut: Option<String>,
+) -> Result<QuickCaptureSettings, String> {
+    let mut cfg = load_config();
+    cfg.quick_capture_enabled = enabled;
+    cfg.quick_capture_shortcut = shortcut
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let resolved = resolved_quick_shortcut(&cfg);
+
+    #[cfg(desktop)]
+    apply_global_shortcut(&app, enabled, &resolved)?;
+    #[cfg(not(desktop))]
+    let _ = &app;
+
+    save_config(&cfg)?;
+    Ok(quick_capture_settings(&cfg))
+}
+
+/// Register (or clear) the quick-capture global hotkey. Always clears the
+/// previous registration first so switching hotkeys doesn't leave a stale one.
+#[cfg(desktop)]
+fn apply_global_shortcut(
+    app: &tauri::AppHandle,
+    enabled: bool,
+    shortcut: &str,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    if enabled {
+        gs.register(shortcut)
+            .map_err(|e| format!("Couldn't register the shortcut \"{shortcut}\": {e}"))?;
+    }
+    Ok(())
+}
+
+/// Get the quick-capture window, creating it (hidden) on first use. It loads the
+/// same bundle as the main window; the frontend branches on the `quick` label.
+#[cfg(desktop)]
+fn quick_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("quick") {
+        return Ok(w);
+    }
+    tauri::WebviewWindowBuilder::new(
+        app,
+        "quick",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("Quick capture — SnipVault")
+    .inner_size(640.0, 460.0)
+    .min_inner_size(460.0, 320.0)
+    .always_on_top(true)
+    .center()
+    .skip_taskbar(true)
+    .visible(false)
+    .build()
+}
+
+/// Show + focus the quick-capture window.
+#[cfg(desktop)]
+fn show_quick_window(app: &tauri::AppHandle) {
+    match quick_window(app) {
+        Ok(w) => {
+            let _ = w.center();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+        Err(e) => eprintln!("[SnipVault] quick-capture window error: {e}"),
+    }
+}
+
+/// Toggle the quick-capture window: hide it if it's up, otherwise show + focus.
+#[cfg(desktop)]
+fn toggle_quick_window(app: &tauri::AppHandle) {
+    match quick_window(app) {
+        Ok(w) => {
+            if w.is_visible().unwrap_or(false) {
+                let _ = w.hide();
+            } else {
+                let _ = w.center();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }
+        Err(e) => eprintln!("[SnipVault] quick-capture window error: {e}"),
+    }
+}
+
+/// Bring the main window to the foreground (from the tray).
+#[cfg(desktop)]
+fn show_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Decide which database (if any) to open on startup.
@@ -615,6 +791,84 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        // Closing the quick-capture window just hides it (the tray/hotkey bring
+        // it back); it never quits the app or is destroyed.
+        .on_window_event(|window, event| {
+            if window.label() == "quick" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+                use tauri_plugin_global_shortcut::ShortcutState;
+
+                // Global hotkey: one handler that toggles the quick-capture window
+                // whenever the (single) registered shortcut is pressed.
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(|app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                toggle_quick_window(app);
+                            }
+                        })
+                        .build(),
+                )?;
+
+                let cfg = load_config();
+                if cfg.quick_capture_enabled {
+                    let shortcut = resolved_quick_shortcut(&cfg);
+                    if let Err(e) = apply_global_shortcut(app.handle(), true, &shortcut) {
+                        // A bad saved accelerator shouldn't stop the app from
+                        // launching — log it and carry on (the tray still works).
+                        eprintln!("[SnipVault] {e}");
+                    }
+                }
+
+                // System tray: left-click opens the main window; the menu offers
+                // quick capture, open, and quit.
+                let quick_item =
+                    MenuItemBuilder::with_id("quick", "Quick capture").build(app)?;
+                let show_item =
+                    MenuItemBuilder::with_id("show", "Open SnipVault").build(app)?;
+                let sep = PredefinedMenuItem::separator(app)?;
+                let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+                let menu = MenuBuilder::new(app)
+                    .items(&[&quick_item, &show_item, &sep, &quit_item])
+                    .build()?;
+
+                let mut tray = TrayIconBuilder::with_id("main-tray")
+                    .tooltip("SnipVault")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id().as_ref() {
+                        "quick" => show_quick_window(app),
+                        "show" => show_main_window(app),
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            show_main_window(tray.app_handle());
+                        }
+                    });
+                if let Some(icon) = app.default_window_icon() {
+                    tray = tray.icon(icon.clone());
+                }
+                tray.build(app)?;
+            }
+            Ok(())
+        })
         .manage(Mutex::new(app_state))
         .invoke_handler(tauri::generate_handler![
             get_snippets,
@@ -644,6 +898,8 @@ pub fn run() {
             clear_remote_config,
             get_all_for_sync,
             apply_sync_records,
+            get_quick_capture_settings,
+            set_quick_capture_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
