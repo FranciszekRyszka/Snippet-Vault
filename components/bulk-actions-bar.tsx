@@ -8,6 +8,7 @@ import {
   FileText,
   Download,
   Trash2,
+  Tag,
   X,
   CheckCheck,
   Loader2,
@@ -22,6 +23,7 @@ type BulkActionsBarProps = {
   onClose: () => void;
   onFavorite: (favorite: boolean) => void;
   onSetKind: (kind: "prompt" | "code") => void;
+  onAddTag: (tag: string) => void;
   onExport: () => void;
   onDelete: () => void;
 };
@@ -39,15 +41,29 @@ export function BulkActionsBar({
   onClose,
   onFavorite,
   onSetKind,
+  onAddTag,
   onExport,
   onDelete,
 }: BulkActionsBarProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [tagging, setTagging] = useState(false);
+  const [tagValue, setTagValue] = useState("");
 
-  // If the selection is emptied out from under us, drop the confirm state.
+  // If the selection is emptied out from under us, drop any transient state.
   useEffect(() => {
-    if (count === 0) setConfirmingDelete(false);
+    if (count === 0) {
+      setConfirmingDelete(false);
+      setTagging(false);
+      setTagValue("");
+    }
   }, [count]);
+
+  const submitTag = () => {
+    const t = tagValue.trim();
+    if (t) onAddTag(t);
+    setTagValue("");
+    setTagging(false);
+  };
 
   const btn =
     "flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50";
@@ -71,6 +87,41 @@ export function BulkActionsBar({
             aria-label="Exit selection mode"
           >
             <X className="h-4 w-4" />
+          </button>
+        </>
+      ) : tagging ? (
+        <>
+          <input
+            autoFocus
+            value={tagValue}
+            onChange={(e) => setTagValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitTag();
+              else if (e.key === "Escape") {
+                setTagging(false);
+                setTagValue("");
+              }
+            }}
+            placeholder={`Tag ${count} entr${count === 1 ? "y" : "ies"}…`}
+            className="w-48 max-w-[50vw] rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            onClick={submitTag}
+            disabled={busy || !tagValue.trim()}
+            className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Tag className="h-3.5 w-3.5" />
+            Add tag
+          </button>
+          <button
+            onClick={() => {
+              setTagging(false);
+              setTagValue("");
+            }}
+            disabled={busy}
+            className={btn}
+          >
+            Cancel
           </button>
         </>
       ) : confirmingDelete ? (
@@ -124,6 +175,10 @@ export function BulkActionsBar({
           <button onClick={() => onSetKind("code")} disabled={busy} className={btn}>
             <Code className="h-3.5 w-3.5" />
             Code
+          </button>
+          <button onClick={() => setTagging(true)} disabled={busy} className={btn}>
+            <Tag className="h-3.5 w-3.5" />
+            Tag
           </button>
           <button onClick={onExport} disabled={busy} className={btn}>
             <Download className="h-3.5 w-3.5" />

@@ -710,6 +710,47 @@ export function SnippetsDashboard() {
     );
   };
 
+  // Add a tag to every selected entry that doesn't already have it. Tags are
+  // normalized (trim + lowercase) to match the app's convention, and only
+  // entries actually gaining the tag are rewritten.
+  const bulkAddTag = async (raw: string) => {
+    const tag = raw.trim().toLowerCase();
+    if (!tag) return;
+    const targets = selectedList.filter(
+      (s) => !(s.tags || []).some((t) => t.toLowerCase() === tag)
+    );
+    if (targets.length === 0) {
+      showNotice(`All selected already have “${tag}”.`);
+      return;
+    }
+    setBulkBusy(true);
+    let failed = 0;
+    for (const s of targets) {
+      try {
+        await updateSnippet(s.id, {
+          title: s.title,
+          description: s.description,
+          code: s.code,
+          language: s.language,
+          tags: [...(s.tags || []), tag],
+          model: s.model || "",
+          kind: s.kind,
+        });
+      } catch (err) {
+        console.error("Bulk add-tag failed for", s.id, err);
+        failed++;
+      }
+    }
+    await fetchSnippets();
+    await fetchAllSnippets();
+    setBulkBusy(false);
+    showNotice(
+      `Tagged ${targets.length - failed} with “${tag}”${
+        failed ? `, ${failed} failed` : ""
+      }.`
+    );
+  };
+
   // Export the selected entries to a single JSON file (the per-prompt content
   // shape, so re-importing creates/updates them via the import path).
   const bulkExport = () => {
@@ -1491,6 +1532,7 @@ export function SnippetsDashboard() {
           onClose={exitSelectMode}
           onFavorite={bulkFavorite}
           onSetKind={bulkSetKind}
+          onAddTag={bulkAddTag}
           onExport={bulkExport}
           onDelete={bulkDelete}
         />

@@ -14,6 +14,14 @@ ships.
 ## [Unreleased]
 
 ### Added
+- **Compare any two prompt versions.** In a prompt's **History**, an expanded
+  version can now be diffed not just against the current text but against **any
+  other past version** — a small "vs" picker chooses the comparison target, and
+  the diff always reads chronologically (older → newer).
+- **Bulk tagging.** In selection mode, the action bar now has a **Tag** action:
+  type a tag once and it's added to every selected entry (normalized and skipped
+  where already present). Completes the multi-select toolkit alongside pin, set
+  kind, export, and delete.
 - **Background auto-sync (desktop).** When a sync server is connected, **Settings
   → Sync server** now offers an **Auto-sync** interval (off / 5 / 15 / 30 / 60
   min). On top of the existing startup sync and manual **Sync now**, the app will
