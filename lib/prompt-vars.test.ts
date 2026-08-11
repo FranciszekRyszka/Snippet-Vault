@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { extractVars, fillVars } from "./prompt-vars";
+import {
+  extractVars,
+  fillVars,
+  parseVars,
+  segmentByVars,
+} from "./prompt-vars";
 
 describe("extractVars", () => {
   it("finds distinct names in first-seen order", () => {
@@ -39,5 +44,80 @@ describe("fillVars", () => {
   });
   it("leaves non-placeholder text untouched", () => {
     expect(fillVars("no vars here", {})).toBe("no vars here");
+  });
+  it("falls back to a variable's default when unfilled", () => {
+    expect(fillVars("Hi {{name=friend}}", {})).toBe("Hi friend");
+    expect(fillVars("Hi {{name=friend}}", { name: "Sam" })).toBe("Hi Sam");
+  });
+  it("uses one variable's default for all its occurrences, even bare ones", () => {
+    // The typed/default occurrence and a later plain {{topic}} resolve the same.
+    expect(fillVars("{{topic=AI}} … more {{topic}}", {})).toBe("AI … more AI");
+  });
+  it("strips the type/options syntax when substituting", () => {
+    expect(fillVars("Tone: {{tone:select(formal,playful)=formal}}", {})).toBe(
+      "Tone: formal"
+    );
+    expect(
+      fillVars("Tone: {{tone:select(formal,playful)}}", { tone: "playful" })
+    ).toBe("Tone: playful");
+  });
+});
+
+describe("parseVars", () => {
+  it("parses a plain variable as text with no default", () => {
+    expect(parseVars("{{topic}}")).toEqual([
+      { name: "topic", type: "text", options: [], default: "" },
+    ]);
+  });
+  it("parses a default value", () => {
+    expect(parseVars("{{topic=AI safety}}")).toEqual([
+      { name: "topic", type: "text", options: [], default: "AI safety" },
+    ]);
+  });
+  it("parses select options and a default choice", () => {
+    expect(parseVars("{{tone:select(formal, playful, concise)=formal}}")).toEqual([
+      {
+        name: "tone",
+        type: "select",
+        options: ["formal", "playful", "concise"],
+        default: "formal",
+      },
+    ]);
+  });
+  it("parses multiline, number, and date types", () => {
+    expect(parseVars("{{notes:multiline}}")[0].type).toBe("multiline");
+    expect(parseVars("{{count:number=3}}")).toEqual([
+      { name: "count", type: "number", options: [], default: "3" },
+    ]);
+    expect(parseVars("{{when:date}}")[0].type).toBe("date");
+  });
+  it("degrades an unknown type — or an empty select — to text", () => {
+    expect(parseVars("{{x:bogus}}")[0].type).toBe("text");
+    expect(parseVars("{{x:select()}}")[0].type).toBe("text");
+  });
+  it("keeps the first occurrence's spec for a repeated name", () => {
+    expect(parseVars("{{tone:select(a,b)=a}} … {{tone}}")).toEqual([
+      { name: "tone", type: "select", options: ["a", "b"], default: "a" },
+    ]);
+  });
+});
+
+describe("segmentByVars", () => {
+  it("splits text into plain and placeholder runs", () => {
+    expect(segmentByVars("a {{x}} b")).toEqual([
+      { text: "a ", isVar: false },
+      { text: "{{x}}", isVar: true },
+      { text: " b", isVar: false },
+    ]);
+  });
+  it("treats a typed/default placeholder as a single highlighted run", () => {
+    expect(segmentByVars("{{tone:select(a,b)=a}}")).toEqual([
+      { text: "{{tone:select(a,b)=a}}", isVar: true },
+    ]);
+  });
+  it("returns a single plain run when there are no placeholders", () => {
+    expect(segmentByVars("nothing here")).toEqual([
+      { text: "nothing here", isVar: false },
+    ]);
   });
 });

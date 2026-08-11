@@ -13,6 +13,16 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **Typed variables & defaults.** A prompt's `{{placeholders}}` can now declare a
+  **type** and a **default value** right in the body — no settings, no new schema.
+  `{{tone:select(formal,playful)}}` becomes a dropdown, `{{notes:multiline}}` a
+  text area, `{{when:date}}` a date picker, and `{{count:number}}` a number field;
+  `{{topic=AI safety}}` (or `{{tone:select(a,b)=a}}`) pre-fills a default in the
+  copy dialog. Plain `{{name}}` behaves exactly as before, and an unknown type
+  quietly falls back to a text field. Because the definition lives in the prompt
+  text, it exports and syncs with the prompt — nothing to migrate.
+
 ### Fixed
 - **Startup hydration mismatch (syntax-highlight theme).** The highlight
   stylesheet is now selected after mount so the first client render matches the

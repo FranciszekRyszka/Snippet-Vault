@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { X, Copy } from "lucide-react";
-import { extractVars, fillVars } from "@/lib/prompt-vars";
+import { parseVars, fillVars, type VarSpec } from "@/lib/prompt-vars";
 import { loadVarValues, saveVarValues } from "@/lib/var-store";
 
 // A small modal for filling a prompt's {{variables}} before copying. One input
@@ -23,13 +23,20 @@ export function FillVarsDialog({
   // Called after the filled text is successfully copied (records usage, etc.).
   onCopied: () => void;
 }) {
-  const vars = useMemo(() => extractVars(code), [code]);
-  // Seed with the values used the last time this prompt was filled.
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    loadVarValues(uuid),
-  );
+  const vars = useMemo(() => parseVars(code), [code]);
+  // Seed each field with the value used last time, falling back to the prompt's
+  // declared default. (loadVarValues/parseVars are pure, so computing this once
+  // in the initializer is safe.)
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const saved = loadVarValues(uuid);
+    const init: Record<string, string> = {};
+    for (const v of vars) init[v.name] = saved[v.name] ?? v.default;
+    return init;
+  });
   const [error, setError] = useState<string | null>(null);
   const filled = useMemo(() => fillVars(code, values), [code, values]);
+  const setValue = (name: string, value: string) =>
+    setValues((v) => ({ ...v, [name]: value }));
 
   // Close on Escape.
   useEffect(() => {
@@ -43,7 +50,7 @@ export function FillVarsDialog({
   const copyFilled = async () => {
     try {
       await navigator.clipboard.writeText(filled);
-      saveVarValues(uuid, values, vars);
+      saveVarValues(uuid, values, vars.map((v) => v.name));
       onCopied();
       onClose();
     } catch (err) {
@@ -78,21 +85,14 @@ export function FillVarsDialog({
         </div>
 
         <div className="flex flex-col gap-3 p-5">
-          {vars.map((name, i) => (
-            <label key={name} className="flex flex-col gap-1">
-              <span className="font-mono text-xs text-muted-foreground">
-                {`{{${name}}}`}
-              </span>
-              <input
-                autoFocus={i === 0}
-                value={values[name] ?? ""}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, [name]: e.target.value }))
-                }
-                placeholder={name}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </label>
+          {vars.map((spec, i) => (
+            <VarField
+              key={spec.name}
+              spec={spec}
+              value={values[spec.name] ?? ""}
+              autoFocus={i === 0}
+              onChange={(val) => setValue(spec.name, val)}
+            />
           ))}
 
           <div>
@@ -124,5 +124,65 @@ export function FillVarsDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+// One field in the fill dialog, rendered to match the variable's declared type:
+// a dropdown for select, a textarea for multiline, a number/date input for those,
+// and a plain text input otherwise. The label shows the placeholder name.
+function VarField({
+  spec,
+  value,
+  autoFocus,
+  onChange,
+}: {
+  spec: VarSpec;
+  value: string;
+  autoFocus: boolean;
+  onChange: (value: string) => void;
+}) {
+  const fieldClass =
+    "rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-mono text-xs text-muted-foreground">
+        {`{{${spec.name}}}`}
+      </span>
+      {spec.type === "select" ? (
+        <select
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={fieldClass}
+        >
+          {/* Placeholder shown only until a choice is made. */}
+          {!spec.options.includes(value) && <option value="">Choose…</option>}
+          {spec.options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      ) : spec.type === "multiline" ? (
+        <textarea
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={spec.name}
+          rows={3}
+          className={`${fieldClass} resize-y`}
+        />
+      ) : (
+        <input
+          autoFocus={autoFocus}
+          type={spec.type === "number" ? "number" : spec.type === "date" ? "date" : "text"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={spec.name}
+          className={fieldClass}
+        />
+      )}
+    </label>
   );
 }

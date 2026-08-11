@@ -408,6 +408,31 @@ export function SnippetForm({
               rows={12}
               className="w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
+            {kind !== "code" && (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Add fill-in variables with{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"{{name}}"}
+                </code>
+                . Optionally give them a default (
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"{{tone=friendly}}"}
+                </code>
+                ) or a type —{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"{{tone:select(formal,playful)}}"}
+                </code>
+                ,{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"{{notes:multiline}}"}
+                </code>
+                ,{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"{{when:date}}"}
+                </code>
+                . You fill them in when you copy.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-1">
