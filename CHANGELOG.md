@@ -13,6 +13,8 @@ ships.
 
 ## [Unreleased]
 
+## [3.0.1] — 2026-08-11
+
 ### Added
 - **nginx and Traefik reverse-proxy examples** for terminating HTTPS, alongside
   the existing Caddy option — self-hosters can pick whichever proxy they prefer.
@@ -436,7 +438,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.3...v3.0.0
 [2.15.3]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.2...v2.15.3
 [2.15.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v2.15.1...v2.15.2
