@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Fixed
+- **Startup hydration mismatch (syntax-highlight theme).** The highlight
+  stylesheet is now selected after mount so the first client render matches the
+  statically-exported HTML, instead of resolving straight to the dark stylesheet
+  and forcing React to regenerate that part of the page on every load. This also
+  clears a follow-on "script tag while rendering" console error that the
+  regeneration triggered. Both themes are still preloaded, so there's no visible
+  change; it just removes the mismatch and the client re-render.
+
 ## [3.1.0] — 2026-08-11
 
 ### Added
