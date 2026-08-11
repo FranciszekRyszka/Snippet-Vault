@@ -39,6 +39,12 @@ import {
   type SyncServer,
 } from "@/lib/tauri-api";
 import { AccentSwatches } from "./accent-picker";
+import {
+  getAutoSyncMinutes,
+  setAutoSyncMinutes as persistAutoSyncMinutes,
+  autoSyncLabel,
+  AUTO_SYNC_OPTIONS,
+} from "@/lib/auto-sync";
 import { runSync as runSharedSync } from "@/hooks/use-sync";
 import { useScrollLock } from "@/hooks/use-scroll-lock";
 import {
@@ -60,6 +66,9 @@ type SettingsDialogProps = {
   onExportLibrary: () => void;
   onExportLibraryMarkdown: () => void;
   onOpenTrash: () => void;
+  // Notify the dashboard when the background auto-sync interval changes, so it
+  // can re-arm its timer immediately.
+  onAutoSyncChange: (minutes: number) => void;
 };
 
 // Settings. The top sections (Library actions, Appearance) work everywhere; the
@@ -72,6 +81,7 @@ export function SettingsDialog({
   onExportLibrary,
   onExportLibraryMarkdown,
   onOpenTrash,
+  onAutoSyncChange,
 }: SettingsDialogProps) {
   // Freeze the page behind the dialog so scrolling here never moves it.
   useScrollLock();
@@ -97,6 +107,7 @@ export function SettingsDialog({
   );
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [autoSync, setAutoSync] = useState(0);
 
   // --- Quick capture (tray + global hotkey) ---
   const [quickEnabled, setQuickEnabled] = useState(true);
@@ -134,6 +145,7 @@ export function SettingsDialog({
         setQuickDefault(s.default_shortcut);
       })
       .catch(() => {});
+    setAutoSync(getAutoSyncMinutes());
     getSyncServer()
       .then((s) => {
         setServer(s);
@@ -526,6 +538,30 @@ export function SettingsDialog({
                     Remove server
                   </button>
                 </div>
+
+                <label className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                  <span>Auto-sync in the background</span>
+                  <select
+                    value={autoSync}
+                    onChange={(e) => {
+                      const minutes = Number(e.target.value);
+                      setAutoSync(minutes);
+                      persistAutoSyncMinutes(minutes);
+                      onAutoSyncChange(minutes);
+                    }}
+                    className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {AUTO_SYNC_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {autoSyncLabel(m)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  In addition to syncing on startup and when you tap Sync now, the
+                  app can reconcile with the server on a timer while it&apos;s open.
+                </p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">

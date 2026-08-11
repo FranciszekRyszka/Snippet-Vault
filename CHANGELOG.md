@@ -14,6 +14,12 @@ ships.
 ## [Unreleased]
 
 ### Added
+- **Background auto-sync (desktop).** When a sync server is connected, **Settings
+  → Sync server** now offers an **Auto-sync** interval (off / 5 / 15 / 30 / 60
+  min). On top of the existing startup sync and manual **Sync now**, the app will
+  reconcile with the server on that timer while it's open — so your machines stay
+  in sync hands-free. A tick is skipped if a sync is already running, and failures
+  stay quiet (the header indicator reflects them). The preference is per-install.
 - **Export the whole library as Markdown.** Alongside the JSON export (which is
   re-importable), **Settings → Library** now has **Export Markdown** — one
   readable `.md` document with every entry under a heading (its language and tags

@@ -80,6 +80,12 @@ export async function runSync(): Promise<SyncResult> {
   }
 }
 
+// Whether a sync is currently in flight — used by background auto-sync to skip a
+// tick that would overlap a startup/manual sync already running.
+export function isSyncing(): boolean {
+  return state.status === "syncing";
+}
+
 function subscribe(callback: () => void): () => void {
   listeners.add(callback);
   return () => listeners.delete(callback);

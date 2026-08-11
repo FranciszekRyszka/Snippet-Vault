@@ -45,7 +45,8 @@ import {
   type SnippetRevision,
   type SyncRecord,
 } from "@/lib/tauri-api";
-import { runSync } from "@/hooks/use-sync";
+import { runSync, isSyncing } from "@/hooks/use-sync";
+import { getAutoSyncMinutes } from "@/lib/auto-sync";
 import { LANGUAGES } from "@/lib/languages";
 import { ArrowDownUp, Cpu, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
 
@@ -86,6 +87,10 @@ export function SnippetsDashboard() {
   // Whether a sync server is configured (desktop only) — gates the header's
   // sync indicator. Kept in sync with add/remove in Settings.
   const [syncEnabled, setSyncEnabled] = useState(false);
+  // Opt-in background auto-sync interval (minutes; 0 = off). Read from the local
+  // preference on mount; updated live when changed in Settings.
+  const [autoSyncMinutes, setAutoSyncMinutes] = useState(0);
+  useEffect(() => setAutoSyncMinutes(getAutoSyncMinutes()), []);
 
   // Update found by the automatic startup check (desktop only).
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
@@ -324,6 +329,19 @@ export function SnippetsDashboard() {
       await runSyncAndReload();
     })();
   }, [dbReady, runSyncAndReload]);
+
+  // Background auto-sync: when a server is configured and the user has chosen an
+  // interval, reconcile every N minutes on top of the startup + manual syncs. A
+  // tick is skipped while another sync is already in flight; failures are quiet
+  // (the header indicator reflects them). Re-arms when the interval or server
+  // connection changes, and clears on unmount.
+  useEffect(() => {
+    if (!isTauri() || !syncEnabled || autoSyncMinutes <= 0) return;
+    const id = setInterval(() => {
+      if (!isSyncing()) void runSyncAndReload();
+    }, autoSyncMinutes * 60_000);
+    return () => clearInterval(id);
+  }, [syncEnabled, autoSyncMinutes, runSyncAndReload]);
 
   // Clear any pending timers on unmount.
   useEffect(() => {
@@ -1582,6 +1600,7 @@ export function SnippetsDashboard() {
             setShowSettings(false);
             handleExportLibraryMarkdown();
           }}
+          onAutoSyncChange={setAutoSyncMinutes}
           onOpenTrash={() => {
             setShowSettings(false);
             setShowTrash(true);
