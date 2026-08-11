@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **Linked prompts (`[[title]]`).** A prompt can reference another by its title —
+  write `[[Base system prompt]]` in the body and the detail view gains a **Linked
+  prompts** section: **Links to** (each reference, click to open it in place) and
+  **Referenced by** (the prompts that point at this one). Unresolved links are
+  shown as "not found" rather than breaking. Like `{{variables}}`, links are read
+  from the body (nothing to store, and they travel through export/sync), and they
+  apply to **prompts only** — a code snippet's `[[ … ]]` stays literal.
+
 ## [3.2.0] — 2026-08-11
 
 ### Added

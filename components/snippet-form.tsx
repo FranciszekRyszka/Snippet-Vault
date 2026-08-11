@@ -430,7 +430,11 @@ export function SnippetForm({
                 <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   {"{{when:date}}"}
                 </code>
-                . You fill them in when you copy.
+                . You fill them in when you copy. Link to another prompt with{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {"[[Its title]]"}
+                </code>
+                .
               </p>
             )}
           </div>

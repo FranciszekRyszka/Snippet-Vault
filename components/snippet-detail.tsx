@@ -18,14 +18,18 @@ import {
   RotateCcw,
   Loader2,
   ChevronDown,
+  ChevronRight,
   FileCode2,
   FileDown,
   Eye,
   FileText,
+  Link2,
+  Unlink,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { extractVars } from "@/lib/prompt-vars";
+import { extractLinks, resolveLink, backlinksFor } from "@/lib/prompt-links";
 import { CodeBlock } from "./code-block";
 import { MarkdownView } from "./markdown-view";
 import { PromptBody } from "./prompt-body";
@@ -56,6 +60,10 @@ type SnippetDetailProps = {
   // which itself captures the current state). Resolves once reloaded.
   onRestoreRevision: (snippet: Snippet, revision: SnippetRevision) => Promise<void>;
   onDuplicate: (snippet: Snippet) => void;
+  // The whole library, so [[title]] links and backlinks can be resolved.
+  allSnippets: Snippet[];
+  // Open another prompt in place (used by the linked-prompts chips).
+  onOpenLink: (id: number) => void;
 };
 
 function formatDateTime(value: string | null): string {
@@ -84,6 +92,8 @@ export function SnippetDetail({
   onExported,
   onRestoreRevision,
   onDuplicate,
+  allSnippets,
+  onOpenLink,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
   const [copiedMd, setCopiedMd] = useState(false);
@@ -145,6 +155,25 @@ export function SnippetDetail({
     [snippet.kind, snippet.code]
   );
   const hasVars = vars.length > 0;
+
+  // Prompt links ([[Other title]]) — prompts only; a code snippet's [[ ]] is
+  // literal syntax. Forward links resolve each target against the library;
+  // backlinks are the prompts that reference this one.
+  const links = useMemo(
+    () =>
+      snippet.kind === "code"
+        ? []
+        : extractLinks(snippet.code).map((title) => ({
+            title,
+            target: resolveLink(title, allSnippets),
+          })),
+    [snippet.kind, snippet.code, allSnippets]
+  );
+  const backlinks = useMemo(
+    () => backlinksFor(snippet, allSnippets),
+    [snippet, allSnippets]
+  );
+  const hasLinks = links.length > 0 || backlinks.length > 0;
 
   // Close on Escape.
   useEffect(() => {
@@ -498,6 +527,68 @@ export function SnippetDetail({
             </div>
           )}
         </div>
+
+        {/* Linked prompts ([[title]] references, both directions) */}
+        {hasLinks && (
+          <div className="border-t border-border px-5 py-4">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Link2 className="h-4 w-4" />
+              Linked prompts
+            </div>
+
+            {links.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">Links to</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {links.map(({ title, target }) =>
+                    target ? (
+                      <button
+                        key={title}
+                        onClick={() => onOpenLink(target.id)}
+                        className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                        title={`Open “${target.title}”`}
+                      >
+                        <Link2 className="h-3 w-3" />
+                        {target.title}
+                        <ChevronRight className="h-3 w-3 opacity-60" />
+                      </button>
+                    ) : (
+                      <span
+                        key={title}
+                        className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground"
+                        title="No prompt with this title yet"
+                      >
+                        <Unlink className="h-3 w-3" />
+                        {title} · not found
+                      </span>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {backlinks.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">
+                  Referenced by
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {backlinks.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onOpenLink(s.id)}
+                      className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/70"
+                      title={`Open “${s.title}”`}
+                    >
+                      {s.title}
+                      <ChevronRight className="h-3 w-3 opacity-60" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">

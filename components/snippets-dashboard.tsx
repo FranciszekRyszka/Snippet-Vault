@@ -1402,7 +1402,12 @@ export function SnippetsDashboard() {
 
       {detailSnippet && (
         <SnippetDetail
+          // Remount on navigation between linked prompts so per-snippet panel
+          // state (history, preview) doesn't carry over.
+          key={detailSnippet.id}
           snippet={detailSnippet}
+          allSnippets={allSnippets}
+          onOpenLink={(id) => setDetailId(id)}
           onClose={() => setDetailId(null)}
           onEdit={handleEdit}
           onDelete={handleDelete}
