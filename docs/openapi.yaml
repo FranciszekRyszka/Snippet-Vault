@@ -1,0 +1,889 @@
+openapi: 3.1.0
+
+info:
+  title: SnipVault Sync Server API
+  version: 3.0.1
+  summary: HTTP API for the self-hosted SnipVault sync server.
+  description: |
+    The **SnipVault sync server** is the SnipVault web app run as a container. It
+    exposes a small REST API that the desktop app uses to keep one prompt/snippet
+    library in sync across several machines, plus health/status probes for
+    operators.
+
+    ## Authentication
+
+    Every `/api/**` route is guarded by a bearer token, checked in constant time
+    by the server's middleware (`proxy.ts`). Send it as
+    `Authorization: Bearer <token>`.
+
+    The server runs in one of three auth modes, chosen by environment:
+
+    | Mode | Env | Behaviour |
+    | --- | --- | --- |
+    | **Single-user** | `SNIPVAULT_TOKEN` | One token guards one shared library (`data/snippets.db`). |
+    | **Multi-user** | `SNIPVAULT_TOKENS=alice:tokA,bob:tokB` | Each user's token maps to a **private vault** (`data/users/<user>/snippets.db`). Structurally isolated — one user cannot read another's data. If both env vars are set, `SNIPVAULT_TOKENS` wins. |
+    | **No-auth** | neither set | Requests pass through in development; in production the server **fails closed** (`503`) unless `SNIPVAULT_ALLOW_NO_AUTH=1`. |
+
+    In multi-user mode the middleware resolves the caller's user from their token
+    and forwards it internally on a trusted `x-snipvault-user` header; any inbound
+    value of that header from a client is always stripped, so it cannot be
+    spoofed. Clients never send it.
+
+    ## Rate limiting
+
+    Repeated **failed** auth attempts from one client (keyed by the first
+    `X-Forwarded-For` hop, falling back to a shared bucket) are throttled with a
+    `429` and a `Retry-After` header, over a sliding window. Valid clients are
+    never throttled. Tune with `SNIPVAULT_RATELIMIT_MAX` (default 20) and
+    `SNIPVAULT_RATELIMIT_WINDOW_MS` (default 60000).
+
+    ## Notes
+
+    - HTTPS is **optional**: by default the server runs on plain HTTP (port 3000).
+      A reverse proxy (Caddy / nginx / Traefik) can terminate TLS in front — see
+      `docs/self-hosting.md`.
+    - All timestamps are UTC in `YYYY-MM-DD HH:MM:SS` form. Fixed width, so they
+      sort/compare correctly as strings (this is how "newest edit wins" works).
+    - Prompt revisions (history) are **local to each database and not synced**.
+  license:
+    name: See repository
+    url: https://github.com/FranciszekRyszka/Snippet-Vault
+  contact:
+    name: SnipVault
+    url: https://github.com/FranciszekRyszka/Snippet-Vault
+
+externalDocs:
+  description: Self-hosting guide
+  url: https://github.com/FranciszekRyszka/Snippet-Vault/blob/main/docs/self-hosting.md
+
+servers:
+  - url: http://localhost:3000
+    description: Local / LAN homeserver (plain HTTP, default)
+  - url: https://{host}
+    description: Behind a TLS-terminating reverse proxy
+    variables:
+      host:
+        default: snipvault.example.com
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Snippets
+    description: Create, read, update, delete, and restore prompt/snippet entries.
+  - name: Tags
+    description: Library-wide tag rename, merge, and delete.
+  - name: Sync
+    description: Bidirectional record reconciliation between a client and the server.
+  - name: Trash
+    description: Soft-deleted (tombstoned) entries and emptying the trash.
+  - name: Ops
+    description: Health and status probes for operators.
+
+paths:
+  /api/health:
+    get:
+      tags: [Ops]
+      operationId: getHealth
+      summary: Liveness / auth probe
+      description: |
+        Minimal liveness check used by the desktop app's "Test & connect" button
+        and the Docker healthcheck. Reaching this route past the token gate proves
+        the token is valid; the snippet count confirms the database is readable.
+        Kept intentionally stable — older clients depend on its exact shape.
+      responses:
+        "200":
+          description: Server is healthy and the database is readable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, count]
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  count:
+                    type: integer
+                    description: Total rows in the snippets table (includes tombstones).
+                    example: 42
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: false
+                  error:
+                    type: string
+
+  /api/status:
+    get:
+      tags: [Ops]
+      operationId: getStatus
+      summary: Richer per-user status
+      description: |
+        Token-gated status probe (added in v3.0.0). Reports library size, last
+        write time, and the server version. In multi-user mode it reflects the
+        **caller's own** vault — it never exposes another user's data.
+      responses:
+        "200":
+          description: Current status for the caller's vault.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, count, lastWrite, version]
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  count:
+                    type: integer
+                    description: Number of non-deleted snippets.
+                    example: 40
+                  lastWrite:
+                    type: [string, "null"]
+                    description: Most recent `updated_at` across non-deleted snippets, or null if empty.
+                    example: "2026-08-11 14:22:07"
+                  version:
+                    type: string
+                    description: Server version (from package.json).
+                    example: "3.0.1"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: false
+                  error:
+                    type: string
+
+  /api/snippets:
+    get:
+      tags: [Snippets]
+      operationId: listSnippets
+      summary: List snippets
+      description: |
+        Returns snippets in the caller's library. Pinned (favorite) entries always
+        lead; the rest follow the requested `sort`. Soft-deleted rows are hidden
+        unless `deleted=1` is passed (the Trash view).
+      parameters:
+        - name: language
+          in: query
+          description: Filter by exact language value.
+          schema:
+            type: string
+          example: python
+        - name: search
+          in: query
+          description: Case-insensitive substring filter. Fields searched depend on `searchMode`.
+          schema:
+            type: string
+        - name: searchMode
+          in: query
+          description: |
+            Which fields `search` matches against.
+            `all` (default) = title, description, tags, model;
+            `title` = title + description; `tags` = tags only.
+          schema:
+            type: string
+            enum: [all, title, tags]
+            default: all
+        - name: tag
+          in: query
+          description: Return only snippets carrying this exact tag.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Ordering (pins always float to the top). Unknown values fall back to `recent`.
+          schema:
+            type: string
+            enum: [recent, most-used, recently-used, alpha]
+            default: recent
+        - name: deleted
+          in: query
+          description: Set to `1` to return the Trash view — only soft-deleted, non-emptied tombstones, newest-deleted first.
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: A list of snippets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snippet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      tags: [Snippets]
+      operationId: createSnippet
+      summary: Create a snippet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnippetCreate"
+      responses:
+        "201":
+          description: The created snippet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/snippets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SnippetId"
+    put:
+      tags: [Snippets]
+      operationId: updateSnippet
+      summary: Replace a snippet
+      description: |
+        Full update of an entry's content. The pre-edit state is captured as a
+        revision (unless nothing changed) before the update is applied atomically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnippetCreate"
+      responses:
+        "200":
+          description: The updated snippet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    patch:
+      tags: [Snippets]
+      operationId: patchSnippetFavorite
+      summary: Toggle the favorite (pin) flag
+      description: Partial update — currently only the `favorite` flag. Bumps `updated_at` so a pin/unpin wins during sync.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        "200":
+          description: The updated snippet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      tags: [Snippets]
+      operationId: deleteSnippet
+      summary: Soft-delete a snippet
+      description: |
+        Marks the row as a tombstone (`deleted = 1`) and bumps `updated_at` so the
+        deletion propagates on the next sync. The row is kept (hidden from reads)
+        so the delete can't be silently resurrected by a peer.
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/snippets/{id}/copy:
+    parameters:
+      - $ref: "#/components/parameters/SnippetId"
+    post:
+      tags: [Snippets]
+      operationId: recordSnippetCopy
+      summary: Record a copy (usage)
+      description: Increments `copy_count` and stamps `last_used_at`. Ignored for tombstoned rows.
+      responses:
+        "200":
+          description: The updated snippet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/snippets/{id}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/SnippetId"
+    get:
+      tags: [Snippets]
+      operationId: getSnippetRevisions
+      summary: Snippet edit history
+      description: |
+        Past versions of a snippet (prompt history), newest first. Local to this
+        database — revisions are **not** synced.
+      responses:
+        "200":
+          description: The revision list (may be empty).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SnippetRevision"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/snippets/restore:
+    post:
+      tags: [Snippets]
+      operationId: restoreSnippet
+      summary: Restore / undo-delete a snippet
+      description: |
+        Re-inserts a previously deleted snippet, preserving its fields. If the body
+        carries a `uuid` that matches an existing soft-deleted row, its tombstone
+        is cleared in place (keeping the same uuid, so the undelete syncs as an
+        ordinary update). Otherwise a new row is inserted (a fresh `id`, and a new
+        `uuid` if none was supplied).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnippetRestore"
+      responses:
+        "201":
+          description: The restored snippet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/snippets/purge:
+    post:
+      tags: [Trash]
+      operationId: emptyTrash
+      summary: Empty the trash
+      description: |
+        Blanks the content of every tombstone (title/description/code/tags/model)
+        while keeping the row as a deleted tombstone, so the deletion still can't
+        be resurrected by a peer on the next sync. `updated_at` is bumped so the
+        emptied state propagates.
+      responses:
+        "200":
+          description: Number of tombstones purged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [purged]
+                properties:
+                  purged:
+                    type: integer
+                    description: How many tombstones were emptied.
+                    example: 3
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/tags:
+    post:
+      tags: [Tags]
+      operationId: rewriteTag
+      summary: Rename, merge, or delete a tag
+      description: |
+        Library-wide tag operation.
+        `{ "from": "old", "to": "new" }` renames (merging if `new` already exists);
+        `{ "from": "old", "to": null }` (or `to` absent) deletes the tag everywhere.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from]
+              properties:
+                from:
+                  type: string
+                  description: The tag to rewrite. Must be non-empty.
+                  example: draft
+                to:
+                  type: [string, "null"]
+                  description: New tag name, or null/absent to delete.
+                  example: archived
+      responses:
+        "200":
+          description: Number of entries whose tags were rewritten.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changed]
+                properties:
+                  changed:
+                    type: integer
+                    example: 7
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/sync:
+    post:
+      tags: [Sync]
+      operationId: sync
+      summary: Bidirectional sync
+      description: |
+        Reconcile a client's full record set with the server's in one round trip:
+
+        1. The client POSTs its full record set (including its own tombstones).
+        2. The server merges each record by `uuid`, newest `updated_at` winning.
+        3. The server returns its full, now-merged set so the client can apply the
+           same newest-wins rule locally.
+
+        Both sides converge to the union of records with the most recent edits.
+        Unknown languages are preserved (a newer client may have languages this
+        server doesn't know yet).
+
+        **Limits:** request body ≤ 25 MB; ≤ 100000 records per request; per-snippet
+        code ≤ 500000 chars and description ≤ 100000 chars. Exceeding a size/count
+        cap returns `413`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                records:
+                  type: array
+                  description: The client's full record set. A missing/non-array value is treated as empty.
+                  items:
+                    $ref: "#/components/schemas/SyncRecord"
+      responses:
+        "200":
+          description: The server's full, merged record set plus how many were applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records, applied]
+                properties:
+                  records:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SyncRecord"
+                  applied:
+                    type: integer
+                    description: Number of incoming records inserted or updated on the server.
+                    example: 12
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: Payload too large — body over 25 MB or more than 100000 records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Per-user (multi-user mode) or shared (single-user mode) access token, sent
+        as `Authorization: Bearer <token>`.
+
+  parameters:
+    SnippetId:
+      name: id
+      in: path
+      required: true
+      description: Numeric snippet id (autoincrement primary key, local to this database).
+      schema:
+        type: integer
+        minimum: 1
+      example: 17
+
+  responses:
+    BadRequest:
+      description: Invalid request (missing/invalid fields or id).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Unauthorized
+    NotFound:
+      description: No snippet with that id.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Snippet not found
+    TooManyRequests:
+      description: |
+        Rate limit tripped by repeated failed auth attempts from this client.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Too many requests
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+
+    Kind:
+      type: string
+      description: Whether the entry is a prompt or a code snippet.
+      enum: [prompt, code]
+      default: prompt
+
+    Snippet:
+      type: object
+      description: A prompt/snippet entry as returned by the API.
+      required:
+        - id
+        - uuid
+        - title
+        - description
+        - code
+        - language
+        - tags
+        - favorite
+        - model
+        - kind
+        - copy_count
+        - last_used_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Autoincrement primary key. Local to this database — not stable across machines.
+          example: 17
+        uuid:
+          type: string
+          description: Stable cross-machine identity used for sync.
+          example: 6f4a0e2c-1b3d-4e5a-9c8f-2a1b0c3d4e5f
+        title:
+          type: string
+          maxLength: 255
+          example: Summarize meeting notes
+        description:
+          type: string
+          example: Turns raw notes into a tidy summary.
+        code:
+          type: string
+          description: The prompt or snippet body.
+        language:
+          type: string
+          description: Language/format value (from the app's language list).
+          example: markdown
+        tags:
+          type: array
+          items:
+            type: string
+          example: [work, summary]
+        favorite:
+          type: boolean
+          description: Pinned to the top of lists.
+        model:
+          type: string
+          description: Optional target model/metadata. Empty string when unset.
+          example: gpt-4o
+        kind:
+          $ref: "#/components/schemas/Kind"
+        copy_count:
+          type: integer
+          minimum: 0
+          description: How many times the entry has been copied.
+        last_used_at:
+          type: [string, "null"]
+          description: UTC timestamp of the last copy, or null if never used.
+          example: "2026-08-10 09:14:33"
+        created_at:
+          type: string
+          example: "2026-08-01 12:00:00"
+        updated_at:
+          type: string
+          description: UTC timestamp of the last edit. Drives newest-wins sync.
+          example: "2026-08-10 09:14:33"
+
+    SnippetCreate:
+      type: object
+      description: Fields accepted when creating (POST) or replacing (PUT) a snippet.
+      required: [title, code, language]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          default: ""
+        code:
+          type: string
+        language:
+          type: string
+          description: Must be one of the app's known language values.
+        tags:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+
+    SnippetRestore:
+      type: object
+      description: |
+        Fields accepted when restoring a snippet. If `uuid` matches an existing
+        soft-deleted row, the tombstone is cleared in place and the remaining
+        fields are ignored; otherwise a full row is inserted.
+      required: [title, code, language]
+      properties:
+        uuid:
+          type: string
+          description: If present and matching a tombstone, clears it in place (keeps the uuid).
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        favorite:
+          type: boolean
+        model:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        copy_count:
+          type: integer
+          minimum: 0
+          description: Coerced to a non-negative integer; invalid values become 0.
+        last_used_at:
+          type: [string, "null"]
+        created_at:
+          type: string
+          description: Defaults to now if absent/invalid.
+        updated_at:
+          type: string
+          description: Defaults to now if absent/invalid.
+
+    SnippetRevision:
+      type: object
+      description: A past version of a snippet (prompt history). Not synced.
+      required: [id, title, description, code, language, tags, model, kind, saved_at]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        saved_at:
+          type: string
+          description: The `updated_at` this version carried while it was live.
+          example: "2026-08-05 11:30:00"
+
+    SyncRecord:
+      type: object
+      description: |
+        One record as it travels over the wire during sync — the full snippet
+        shape keyed by `uuid` (no local `id`), plus the `deleted` tombstone flag.
+        Incoming records require at least `uuid`, `title`, and `code`; anything
+        else is normalized (unknown language kept, out-of-range values clamped).
+      required:
+        - uuid
+        - title
+        - description
+        - code
+        - language
+        - tags
+        - favorite
+        - model
+        - kind
+        - copy_count
+        - last_used_at
+        - created_at
+        - updated_at
+        - deleted
+      properties:
+        uuid:
+          type: string
+          description: Stable cross-machine identity. Required.
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        favorite:
+          type: boolean
+        model:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        copy_count:
+          type: integer
+          minimum: 0
+        last_used_at:
+          type: [string, "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        deleted:
+          type: boolean
+          description: Tombstone flag — true means the record is deleted.
