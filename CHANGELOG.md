@@ -14,6 +14,12 @@ ships.
 ## [Unreleased]
 
 ### Added
+- **Duplicate detection.** The **Usage insights** panel now has a **Possible
+  duplicates** section that groups entries whose content is effectively identical
+  (whitespace-insensitive, so reformatted copies still match). Each group lists
+  its copies with their usage count and age — click one to open it and delete the
+  ones you don't need. It's a cheap exact match computed over the loaded library,
+  so there's nothing to configure and no false-positive fuzzy guessing.
 - **Linked prompts (`[[title]]`).** A prompt can reference another by its title —
   write `[[Base system prompt]]` in the body and the detail view gains a **Linked
   prompts** section: **Links to** (each reference, click to open it in place) and

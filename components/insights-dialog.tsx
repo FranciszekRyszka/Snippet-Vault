@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { X, BarChart3, Flame, Clock, Moon } from "lucide-react";
+import { X, BarChart3, Flame, Clock, Moon, Files, ChevronRight } from "lucide-react";
 import { formatCount } from "@/lib/prompt-stats";
+import { findDuplicateGroups } from "@/lib/duplicates";
 import type { Snippet } from "@/lib/tauri-api";
 
 // Parse a stored UTC "YYYY-MM-DD HH:MM:SS" timestamp into a compact relative
@@ -55,6 +56,13 @@ export function InsightsDialog({
     const neverUsed = snippets.filter((s) => s.copy_count === 0);
     return { totalCopies, mostUsed, recentlyUsed, neverUsed };
   }, [snippets]);
+
+  // Entries whose content is effectively identical (whitespace-insensitive),
+  // grouped so redundant copies can be found and cleaned up.
+  const duplicateGroups = useMemo(
+    () => findDuplicateGroups(snippets),
+    [snippets]
+  );
 
   const open = (s: Snippet) => {
     onOpen(s);
@@ -182,6 +190,54 @@ export function InsightsDialog({
                 )}
               </section>
             )}
+
+            {/* Possible duplicates */}
+            <section>
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <Files className="h-4 w-4 text-muted-foreground" />
+                Possible duplicates
+                {duplicateGroups.length > 0 && ` (${duplicateGroups.length})`}
+              </h3>
+              {duplicateGroups.length === 0 ? (
+                <p className="px-2 text-xs text-muted-foreground">
+                  No duplicate content found — every entry is unique.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {duplicateGroups.map((group, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-border bg-background p-2"
+                    >
+                      <p className="px-1 pb-1 text-xs text-muted-foreground">
+                        {group.length} entries with the same content
+                      </p>
+                      {group.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => open(s)}
+                          className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                        >
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm text-foreground">
+                              {s.title}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatCount(s.copy_count)}× · {timeAgo(s.created_at)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  <p className="px-2 text-xs text-muted-foreground">
+                    Open the copies you don&apos;t need and delete them — deletions
+                    sync and can be undone from Trash.
+                  </p>
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>
