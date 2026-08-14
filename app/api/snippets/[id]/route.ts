@@ -17,7 +17,7 @@ export async function PUT(
   const db = dbForRequest(request);
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model, kind, color } = body;
+    const { title, description, code, language, tags, model, kind, color, template } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -65,7 +65,7 @@ export async function PUT(
       const res = db
         .prepare(
           `UPDATE snippets
-           SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, updated_at = datetime('now')
+           SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, updated_at = datetime('now')
            WHERE id = ?`
         )
         .run(
@@ -77,6 +77,7 @@ export async function PUT(
           sanitizedModel,
           sanitizedKind,
           sanitizedColor,
+          template === true ? 1 : 0,
           numericId
         );
       return res.changes;

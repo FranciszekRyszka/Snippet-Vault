@@ -21,10 +21,15 @@ type SnippetFormProps = {
     model: string;
     kind: SnippetKind;
     color: string;
+    template: boolean;
   }) => void;
   onCancel: () => void;
   saving: boolean;
   allTags?: string[];
+  // Whether this is an edit vs. a create. Defaults to `!!snippet`, but a
+  // "New from template" flow passes a seed `snippet` while forcing create
+  // labeling/behavior with `isEditing={false}`.
+  isEditing?: boolean;
 };
 
 export function SnippetForm({
@@ -33,6 +38,7 @@ export function SnippetForm({
   onCancel,
   saving,
   allTags = [],
+  isEditing: isEditingProp,
 }: SnippetFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -41,6 +47,7 @@ export function SnippetForm({
   const [model, setModel] = useState("");
   const [kind, setKind] = useState<SnippetKind>("prompt");
   const [color, setColor] = useState<string>("");
+  const [template, setTemplate] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -67,6 +74,7 @@ export function SnippetForm({
       setModel(snippet.model || "");
       setKind(snippet.kind || "prompt");
       setColor(snippet.color || "");
+      setTemplate(snippet.template || false);
       setTags(snippet.tags || []);
     } else {
       setTitle("");
@@ -76,6 +84,7 @@ export function SnippetForm({
       setModel("");
       setKind("prompt");
       setColor("");
+      setTemplate(false);
       setTags([]);
     }
     setTagInput("");
@@ -154,10 +163,11 @@ export function SnippetForm({
       model: model.trim(),
       kind,
       color,
+      template,
     });
   };
 
-  const isEditing = !!snippet;
+  const isEditing = isEditingProp ?? !!snippet;
   const stats = getPromptStats(code);
   // Wording follows the chosen kind so the form doesn't call a code snippet a
   // "prompt", and the ~token estimate is prompt-only.
@@ -246,6 +256,21 @@ export function SnippetForm({
                 />
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <input
+                type="checkbox"
+                checked={template}
+                onChange={(e) => setTemplate(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              Save as a template
+              <span className="font-normal text-muted-foreground">
+                — offered as a starting point in the New menu
+              </span>
+            </label>
           </div>
 
           <div>

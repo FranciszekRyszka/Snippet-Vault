@@ -13,6 +13,7 @@ import {
   Cpu,
   Code,
   Braces,
+  FileText,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
@@ -73,6 +74,7 @@ export function exportSnippet(snippet: Snippet): string | null {
       model: snippet.model || "",
       kind: snippet.kind || "prompt",
       color: snippet.color || "",
+      template: snippet.template || false,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -318,6 +320,17 @@ export function SnippetCard({
       </span>
     ) : null;
 
+  // Badge marking a reusable template (a starting point in the New menu).
+  const templateBadge = snippet.template ? (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary"
+      title="Template — a starting point in the New menu"
+    >
+      <FileText className="h-3 w-3" />
+      Template
+    </span>
+  ) : null;
+
   // Badge marking a prompt with fillable variables, so it's discoverable that
   // copying opens the fill dialog.
   const varsBadge = hasVars ? (
@@ -351,6 +364,12 @@ export function SnippetCard({
                 {snippet.title}
               </h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {snippet.template && (
+                  <span className="inline-flex items-center gap-1 font-medium text-primary">
+                    <FileText className="h-3 w-3" />
+                    Template
+                  </span>
+                )}
                 {snippet.kind === "code" && (
                   <span className="inline-flex items-center gap-1 font-medium">
                     <Code className="h-3 w-3" />
@@ -451,6 +470,7 @@ export function SnippetCard({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {templateBadge}
           {kindBadge}
           {varsBadge}
           <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">

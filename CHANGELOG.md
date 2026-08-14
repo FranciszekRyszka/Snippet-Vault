@@ -14,6 +14,20 @@ ships.
 ## [Unreleased]
 
 ### Added
+- **Templates.** Mark any entry as a **template** (a checkbox in the editor) and
+  it becomes a starting point in a new dropdown beside **New Prompt/Snippet**.
+  Picking one opens the editor pre-filled with the template's content as a brand
+  new entry (its own fresh id) — the new entry isn't itself a template unless you
+  say so. Templates carry a badge in the list/detail, and the flag is a sync-safe
+  column that travels through export/import and sync.
+- **Side-by-side diff in History.** The version diff gains a **Split** view
+  (alongside Diff and Full text) that shows the two versions in two columns —
+  old on the left, new on the right, edited lines paired on the same row. Works
+  with the "vs any version" picker too.
+- **Import-time duplicate heads-up.** When importing files, the summary now notes
+  how many imported prompts look like duplicates of ones already in your library
+  (or of earlier files in the same batch), so you can tidy up via **Insights →
+  Possible duplicates**. Non-blocking — everything is still imported.
 - **Per-prompt color.** Tag any prompt with a color from a small palette for
   faster visual scanning of the grid/list — the card shows a colored left
   accent. Set it while editing (a swatch row in the form) or change it in a

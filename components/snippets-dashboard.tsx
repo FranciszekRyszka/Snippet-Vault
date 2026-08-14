@@ -47,6 +47,7 @@ import {
 } from "@/lib/tauri-api";
 import { runSync, isSyncing } from "@/hooks/use-sync";
 import { getAutoSyncMinutes } from "@/lib/auto-sync";
+import { normalizeForDup } from "@/lib/duplicates";
 import { LANGUAGES } from "@/lib/languages";
 import { ArrowDownUp, Cpu, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
 
@@ -116,6 +117,9 @@ export function SnippetsDashboard() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null);
+  // Pre-fill values for a "New from template" create (a seed, not an edit
+  // target). When set, the form opens pre-filled but saves as a new entry.
+  const [formSeed, setFormSeed] = useState<Snippet | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -442,6 +446,7 @@ export function SnippetsDashboard() {
     model: string;
     kind: SnippetKind;
     color: string;
+    template: boolean;
   }) => {
     setSaving(true);
     try {
@@ -458,6 +463,7 @@ export function SnippetsDashboard() {
       await fetchAllSnippets();
       setShowForm(false);
       setEditingSnippet(null);
+      setFormSeed(null);
     } catch (err) {
       // Keep the form open so the user's edits aren't lost, and tell them why.
       console.error("Failed to save snippet:", err);
@@ -509,8 +515,9 @@ export function SnippetsDashboard() {
         tags: rev.tags,
         model: rev.model,
         kind: rev.kind,
-        // Color is metadata, not part of version history — keep the current one.
+        // Color/template are metadata, not part of version history — keep current.
         color: snip.color || "",
+        template: snip.template,
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -540,6 +547,7 @@ export function SnippetsDashboard() {
         model: snip.model,
         kind: snip.kind,
         color: snip.color,
+        template: snip.template,
       });
       setDetailId(null);
       await fetchSnippets();
@@ -606,6 +614,7 @@ export function SnippetsDashboard() {
         model: snippet.model || "",
         kind: snippet.kind,
         color,
+        template: snippet.template,
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -733,6 +742,7 @@ export function SnippetsDashboard() {
           model: s.model || "",
           kind,
           color: s.color || "",
+          template: s.template,
         });
       } catch (err) {
         console.error("Bulk set-kind failed for", s.id, err);
@@ -775,6 +785,7 @@ export function SnippetsDashboard() {
           model: s.model || "",
           kind: s.kind,
           color: s.color || "",
+          template: s.template,
         });
       } catch (err) {
         console.error("Bulk add-tag failed for", s.id, err);
@@ -804,6 +815,8 @@ export function SnippetsDashboard() {
         tags: s.tags || [],
         model: s.model || "",
         kind: s.kind || "prompt",
+        color: s.color || "",
+        template: s.template || false,
       }));
       const filename = `snipvault-selection-${new Date()
         .toISOString()
@@ -985,8 +998,17 @@ export function SnippetsDashboard() {
   // tallies so a batch can show one combined summary. Throws only when a .json
   // file is malformed.
   const importOneFile = async (
-    file: File
-  ): Promise<{ imported: number; skipped: number; libraryApplied: number }> => {
+    file: File,
+    // Normalized bodies already in the library, so a newly created prompt whose
+    // content matches an existing one can be counted as a likely duplicate and
+    // surfaced in the import summary (non-blocking — the import still happens).
+    existingBodies: Set<string>
+  ): Promise<{
+    imported: number;
+    skipped: number;
+    libraryApplied: number;
+    duplicates: number;
+  }> => {
     const text = await file.text();
     const looksJson = /\.json$/i.test(file.name) || /^\s*[[{]/.test(text);
 
@@ -1002,15 +1024,17 @@ export function SnippetsDashboard() {
       }
 
       if (parsed !== undefined) {
-        // Library file: merge by uuid via the sync path.
+        // Library file: merge by uuid via the sync path. These update in place
+        // (not new rows), so they're never counted as duplicates.
         if (isLibraryExport(parsed)) {
           const applied = await importLibrary(parsed);
-          return { imported: 0, skipped: 0, libraryApplied: applied };
+          return { imported: 0, skipped: 0, libraryApplied: applied, duplicates: 0 };
         }
         const items = Array.isArray(parsed) ? parsed : [parsed];
         const validLanguages = new Set(LANGUAGES.map((l) => l.value));
         let imported = 0;
         let skipped = 0;
+        let duplicates = 0;
         for (const item of items) {
           if (
             !item ||
@@ -1042,21 +1066,32 @@ export function SnippetsDashboard() {
                 ? item.model.trim().slice(0, 100)
                 : "",
             kind: item.kind === "code" ? "code" : "prompt",
+            color: typeof item.color === "string" ? item.color : "",
+            template: item.template === true,
           };
           try {
             await createSnippet(input);
             imported++;
+            const norm = normalizeForDup(input.code);
+            if (norm) {
+              if (existingBodies.has(norm)) duplicates++;
+              existingBodies.add(norm);
+            }
           } catch (itemErr) {
             console.error("Failed to import one prompt:", itemErr);
             skipped++;
           }
         }
-        return { imported, skipped, libraryApplied: 0 };
+        return { imported, skipped, libraryApplied: 0, duplicates };
       }
     }
 
     // Plain text (.md / .txt / …): a single prompt with the file's text as body.
-    if (!text.trim()) return { imported: 0, skipped: 1, libraryApplied: 0 };
+    if (!text.trim())
+      return { imported: 0, skipped: 1, libraryApplied: 0, duplicates: 0 };
+    const norm = normalizeForDup(text);
+    const isDup = norm ? existingBodies.has(norm) : false;
+    if (norm) existingBodies.add(norm);
     await createSnippet({
       title: (baseName(file.name) || "Imported prompt").slice(0, 255),
       description: "",
@@ -1066,7 +1101,7 @@ export function SnippetsDashboard() {
       model: "",
       kind: "prompt",
     });
-    return { imported: 1, skipped: 0, libraryApplied: 0 };
+    return { imported: 1, skipped: 0, libraryApplied: 0, duplicates: isDup ? 1 : 0 };
   };
 
   // Import a batch of files (from the picker or a drop): process each, refresh
@@ -1076,13 +1111,21 @@ export function SnippetsDashboard() {
     let imported = 0;
     let skipped = 0;
     let libraryApplied = 0;
+    let duplicates = 0;
     let failedFiles = 0;
+    // Snapshot the library's normalized bodies up front so importOneFile can
+    // flag newly created prompts that match something already here (or an
+    // earlier file in the same batch — it adds to the set as it goes).
+    const existingBodies = new Set(
+      allSnippets.map((s) => normalizeForDup(s.code)).filter(Boolean)
+    );
     for (const file of files) {
       try {
-        const r = await importOneFile(file);
+        const r = await importOneFile(file, existingBodies);
         imported += r.imported;
         skipped += r.skipped;
         libraryApplied += r.libraryApplied;
+        duplicates += r.duplicates;
       } catch (err) {
         console.error(`Import of ${file.name} failed:`, err);
         failedFiles++;
@@ -1098,8 +1141,16 @@ export function SnippetsDashboard() {
       );
     if (imported) parts.push(`${imported} prompt${imported !== 1 ? "s" : ""}`);
     if (parts.length) {
+      // A trailing heads-up when some imports look like duplicates of prompts
+      // already in the library, so the user can tidy up via Insights → Possible
+      // duplicates. Non-blocking — everything was still imported.
+      const dupNote = duplicates
+        ? ` — ${duplicates} may duplicate existing prompt${
+            duplicates !== 1 ? "s" : ""
+          }`
+        : "";
       showNotice(
-        `Imported ${parts.join(" and ")}${skipped ? `, skipped ${skipped}` : ""}.`
+        `Imported ${parts.join(" and ")}${skipped ? `, skipped ${skipped}` : ""}${dupNote}.`
       );
     } else if (failedFiles) {
       showError(
@@ -1124,8 +1175,25 @@ export function SnippetsDashboard() {
 
   const handleNewSnippet = useCallback(() => {
     setEditingSnippet(null);
+    setFormSeed(null);
     setShowForm(true);
   }, []);
+
+  // Start a new entry pre-filled from a template. The seed is a create (fresh
+  // uuid on save), and the new entry itself isn't a template by default — so
+  // using a template doesn't silently spawn more templates.
+  const handleNewFromTemplate = useCallback((t: Snippet) => {
+    setEditingSnippet(null);
+    setFormSeed({ ...t, template: false });
+    setShowForm(true);
+  }, []);
+
+  // Templates available as starting points (from the whole library, not just
+  // the current filter view).
+  const templates = useMemo(
+    () => allSnippets.filter((s) => s.template),
+    [allSnippets]
+  );
 
   // Whether any modal/dialog is currently open.
   const anyModalOpen =
@@ -1309,6 +1377,11 @@ export function SnippetsDashboard() {
         onOpenSettings={() => setShowSettings(true)}
         syncEnabled={syncEnabled}
         onSyncNow={runSyncAndReload}
+        templates={templates.map((t) => ({ id: t.id, title: t.title }))}
+        onNewFromTemplate={(id) => {
+          const t = templates.find((s) => s.id === id);
+          if (t) handleNewFromTemplate(t);
+        }}
       />
 
       <input
@@ -1524,11 +1597,13 @@ export function SnippetsDashboard() {
 
       {showForm && (
         <SnippetForm
-          snippet={editingSnippet}
+          snippet={editingSnippet ?? formSeed}
+          isEditing={editingSnippet !== null}
           onSave={handleSave}
           onCancel={() => {
             setShowForm(false);
             setEditingSnippet(null);
+            setFormSeed(null);
           }}
           saving={saving}
           allTags={allTags}

@@ -39,6 +39,7 @@ import { RunInMenu } from "./run-in-menu";
 import { exportSnippet, exportSnippetMarkdown } from "./snippet-card";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { DiffBlock } from "./diff-block";
+import { SplitDiffBlock } from "./split-diff";
 import { diffLines, diffStats } from "@/lib/diff";
 import { toMarkdown } from "@/lib/to-markdown";
 import {
@@ -124,7 +125,9 @@ export function SnippetDetail({
   const [revsLoading, setRevsLoading] = useState(false);
   const [revsError, setRevsError] = useState<string | null>(null);
   const [expandedRev, setExpandedRev] = useState<number | null>(null);
-  const [revViewMode, setRevViewMode] = useState<"diff" | "full">("diff");
+  const [revViewMode, setRevViewMode] = useState<"diff" | "split" | "full">(
+    "diff"
+  );
   // What the expanded revision is diffed against: the current version (default)
   // or another past revision. Reset to "current" whenever a different revision
   // is expanded.
@@ -367,6 +370,15 @@ export function SnippetDetail({
 
         {/* Badges */}
         <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+          {snippet.template && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+              title="Template — a starting point in the New menu"
+            >
+              <FileText className="h-3 w-3" />
+              Template
+            </span>
+          )}
           {snippet.kind === "code" && (
             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               <Code className="h-3 w-3" />
@@ -566,21 +578,27 @@ export function SnippetDetail({
                               <>
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
                                   <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
-                                    {(["diff", "full"] as const).map((mode) => (
-                                      <button
-                                        key={mode}
-                                        onClick={() => setRevViewMode(mode)}
-                                        className={`rounded px-2 py-0.5 font-medium capitalize transition-colors ${
-                                          revViewMode === mode
-                                            ? "bg-primary text-primary-foreground"
-                                            : "text-muted-foreground hover:text-foreground"
-                                        }`}
-                                      >
-                                        {mode === "diff" ? "Diff" : "Full text"}
-                                      </button>
-                                    ))}
+                                    {(["diff", "split", "full"] as const).map(
+                                      (mode) => (
+                                        <button
+                                          key={mode}
+                                          onClick={() => setRevViewMode(mode)}
+                                          className={`rounded px-2 py-0.5 font-medium capitalize transition-colors ${
+                                            revViewMode === mode
+                                              ? "bg-primary text-primary-foreground"
+                                              : "text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          {mode === "diff"
+                                            ? "Diff"
+                                            : mode === "split"
+                                              ? "Split"
+                                              : "Full text"}
+                                        </button>
+                                      )
+                                    )}
                                   </div>
-                                  {revViewMode === "diff" && (
+                                  {revViewMode !== "full" && (
                                     <label className="flex items-center gap-1 text-xs text-muted-foreground">
                                       vs
                                       <select
@@ -607,7 +625,7 @@ export function SnippetDetail({
                                       </select>
                                     </label>
                                   )}
-                                  {revViewMode === "diff" && (
+                                  {revViewMode !== "full" && (
                                     <span className="text-xs text-muted-foreground">
                                       {unchanged ? (
                                         `No changes from the ${targetLabel}`
@@ -626,6 +644,11 @@ export function SnippetDetail({
                                 </div>
                                 {revViewMode === "diff" ? (
                                   <DiffBlock oldText={oldText} newText={newText} />
+                                ) : revViewMode === "split" ? (
+                                  <SplitDiffBlock
+                                    oldText={oldText}
+                                    newText={newText}
+                                  />
                                 ) : (
                                   <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs text-foreground">
                                     {rev.code}

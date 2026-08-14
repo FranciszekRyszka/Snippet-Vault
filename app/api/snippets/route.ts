@@ -96,7 +96,7 @@ export async function POST(request: Request) {
   const db = dbForRequest(request);
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model, kind, color } = body;
+    const { title, description, code, language, tags, model, kind, color, template } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -125,8 +125,8 @@ export async function POST(request: Request) {
     const sanitizedColor = sanitizeColor(color);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -138,7 +138,8 @@ export async function POST(request: Request) {
       JSON.stringify(sanitizedTags),
       sanitizedModel,
       sanitizedKind,
-      sanitizedColor
+      sanitizedColor,
+      template === true ? 1 : 0
     );
 
     const newSnippet = db.prepare("SELECT * FROM snippets WHERE id = ?").get(result.lastInsertRowid) as Record<string, unknown>;

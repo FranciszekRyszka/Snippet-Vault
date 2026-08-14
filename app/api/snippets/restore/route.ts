@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       model,
       kind,
       color,
+      template,
       copy_count,
       last_used_at,
       created_at,
@@ -95,8 +96,8 @@ export async function POST(request: Request) {
     const lastUsedAt = validTimestampOr(last_used_at, null);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, copy_count, last_used_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, copy_count, last_used_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       sanitizedModel,
       sanitizedKind,
       sanitizedColor,
+      template === true ? 1 : 0,
       sanitizedCopyCount,
       lastUsedAt,
       createdAt,

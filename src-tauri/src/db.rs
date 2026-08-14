@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// place so every SELECT stays in sync with the row mapper. New columns (`uuid`,
 /// then `kind`) are appended last so the earlier indices stay stable.
 const SNIPPET_COLUMNS: &str =
-    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color";
+    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color, template";
 
 /// How many past revisions to keep per snippet. Older ones are pruned on each
 /// new capture so history stays bounded.
@@ -76,6 +76,10 @@ pub struct Snippet {
     /// visual scanning. Metadata like `favorite` — not part of prompt history.
     #[serde(default)]
     pub color: String,
+    /// Whether this entry is a reusable template (offered as a starting point in
+    /// the New dialog). Metadata like `favorite` — not part of prompt history.
+    #[serde(default)]
+    pub template: bool,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -115,6 +119,8 @@ pub struct CreateSnippetInput {
     pub kind: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub template: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +135,8 @@ pub struct UpdateSnippetInput {
     pub kind: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub template: Option<bool>,
 }
 
 /// One snippet as it travels to/from the sync server: the full record keyed by
@@ -148,6 +156,8 @@ pub struct SyncRecord {
     pub kind: String,
     #[serde(default)]
     pub color: String,
+    #[serde(default)]
+    pub template: bool,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -178,9 +188,12 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
         kind: row
             .get::<_, Option<String>>(13)?
             .unwrap_or_else(|| "prompt".to_string()),
-        // `color` is the last column (index 14). Tolerate NULL on a not-yet-
-        // migrated row by falling back to "" (no color).
+        // `color` is at index 14. Tolerate NULL on a not-yet-migrated row by
+        // falling back to "" (no color).
         color: row.get::<_, Option<String>>(14)?.unwrap_or_default(),
+        // `template` is the last column (index 15). Tolerate NULL by defaulting
+        // to false (not a template).
+        template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
         // Read as i64, but fall back to a truncated REAL: SQLite's integer
         // arithmetic can overflow a copy_count into a float, and this column has
         // seen bad writes before. A defensive read keeps one odd row from
@@ -284,6 +297,13 @@ impl Database {
         if !existing.contains("color") {
             conn.execute(
                 "ALTER TABLE snippets ADD COLUMN color TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
+        // Reusable-template flag. DEFAULT 0 backfills existing rows as non-templates.
+        if !existing.contains("template") {
+            conn.execute(
+                "ALTER TABLE snippets ADD COLUMN template INTEGER NOT NULL DEFAULT 0",
                 [],
             )?;
         }
@@ -563,12 +583,13 @@ impl Database {
         let model = input.model.unwrap_or_default();
         let kind = input.kind.unwrap_or_else(default_kind);
         let color = input.color.unwrap_or_default();
+        let template = input.template.unwrap_or(false) as i64;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let uuid = uuid::Uuid::new_v4().to_string();
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, now, now],
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, template, now, now],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -585,6 +606,7 @@ impl Database {
         let model = input.model.unwrap_or_default();
         let kind = input.kind.unwrap_or_else(default_kind);
         let color = input.color.unwrap_or_default();
+        let template = input.template.unwrap_or(false) as i64;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // Capture the pre-edit state as a revision so it can be viewed/restored.
@@ -627,8 +649,8 @@ impl Database {
         }
 
         let rows_affected = conn.execute(
-            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, updated_at = ? WHERE id = ?",
-            params![input.title, description, input.code, input.language, tags_json, model, kind, color, now, id],
+            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, updated_at = ? WHERE id = ?",
+            params![input.title, description, input.code, input.language, tags_json, model, kind, color, template, now, id],
         )?;
 
         drop(conn);
@@ -759,11 +781,11 @@ impl Database {
         };
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, copy_count, last_used_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, copy_count, last_used_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 uuid, s.title, s.description, s.code, s.language, tags_json,
-                s.favorite as i64, s.model, s.kind, s.color, s.copy_count, s.last_used_at, s.created_at, s.updated_at
+                s.favorite as i64, s.model, s.kind, s.color, s.template as i64, s.copy_count, s.last_used_at, s.created_at, s.updated_at
             ],
         )?;
 
@@ -779,7 +801,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uuid, title, description, code, language, tags, favorite, model, \
-             copy_count, last_used_at, created_at, updated_at, deleted, kind, color FROM snippets",
+             copy_count, last_used_at, created_at, updated_at, deleted, kind, color, template FROM snippets",
         )?;
         let iter = stmt.query_map([], |row| {
             let tags_json: String = row.get(5)?;
@@ -799,6 +821,7 @@ impl Database {
                     .get::<_, Option<String>>(13)?
                     .unwrap_or_else(|| "prompt".to_string()),
                 color: row.get::<_, Option<String>>(14)?.unwrap_or_default(),
+                template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
                 copy_count: row
                     .get::<_, i64>(8)
                     .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
@@ -839,11 +862,11 @@ impl Database {
             match existing {
                 None => {
                     tx.execute(
-                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, copy_count, last_used_at, created_at, updated_at, deleted)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, copy_count, last_used_at, created_at, updated_at, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         params![
                             rec.uuid, rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64
                         ],
                     )?;
@@ -851,10 +874,10 @@ impl Database {
                 }
                 Some(current) if rec.updated_at > current => {
                     tx.execute(
-                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
+                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, template = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
                         params![
                             rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64, rec.uuid
                         ],
                     )?;
@@ -913,6 +936,7 @@ mod sqli_tests {
             model: None,
             kind: None,
             color: None,
+            template: None,
         }
     }
 
@@ -974,6 +998,7 @@ mod sqli_tests {
                 model: Some("'); DROP TABLE snippets;--".into()),
                 kind: None,
                 color: None,
+                template: None,
             },
         )
         .unwrap();
@@ -1020,6 +1045,7 @@ mod sqli_tests {
                 model: None,
                 kind: Some("code".into()),
                 color: None,
+                template: None,
             },
         )
         .unwrap();
@@ -1062,6 +1088,7 @@ mod sqli_tests {
                     model: None,
                     kind: None,
                     color,
+                    template: None,
                 },
             )
             .unwrap();
@@ -1079,6 +1106,63 @@ mod sqli_tests {
         db2.apply_sync_records(records).unwrap();
         let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
         assert!(synced.iter().any(|s| s.title == "tagged" && s.color == "violet"));
+    }
+
+    #[test]
+    fn template_flag_defaults_false_and_round_trips() {
+        let db = temp_db();
+
+        // Omitted → not a template.
+        let a = db.create_snippet(mk("plain", "body")).unwrap();
+        assert!(!a.template);
+
+        // Set on create, reads back true.
+        let mut tpl = mk("starter", "Dear {{name}}");
+        tpl.template = Some(true);
+        let b = db.create_snippet(tpl).unwrap();
+        assert!(b.template);
+        assert!(db.get_snippet(b.id).unwrap().unwrap().template);
+
+        // Update can clear the flag.
+        db.update_snippet(
+            b.id,
+            UpdateSnippetInput {
+                title: "starter".into(),
+                description: None,
+                code: "Dear {{name}}".into(),
+                language: "text".into(),
+                tags: None,
+                model: None,
+                kind: None,
+                color: None,
+                template: Some(false),
+            },
+        )
+        .unwrap();
+        assert!(!db.get_snippet(b.id).unwrap().unwrap().template);
+
+        // Survives a sync round-trip.
+        db.update_snippet(
+            b.id,
+            UpdateSnippetInput {
+                title: "starter".into(),
+                description: None,
+                code: "Dear {{name}}".into(),
+                language: "text".into(),
+                tags: None,
+                model: None,
+                kind: None,
+                color: None,
+                template: Some(true),
+            },
+        )
+        .unwrap();
+        let records = db.get_all_for_sync().unwrap();
+        assert!(records.iter().any(|r| r.template));
+        let db2 = temp_db();
+        db2.apply_sync_records(records).unwrap();
+        let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
+        assert!(synced.iter().any(|s| s.title == "starter" && s.template));
     }
 
     #[test]
@@ -1213,6 +1297,7 @@ mod sqli_tests {
             model: None,
             kind: None,
             color: None,
+            template: None,
         };
         db.update_snippet(s.id, upd("v2", "body two")).unwrap();
         let revs = db.get_revisions(&s.uuid).unwrap();
@@ -1252,6 +1337,7 @@ mod sqli_tests {
             model: None,
             kind: None,
             color: None,
+            template: None,
         };
         let a = db.create_snippet(tagged("a", vec!["rust", "cli"])).unwrap();
         let b = db.create_snippet(tagged("b", vec!["rust"])).unwrap();

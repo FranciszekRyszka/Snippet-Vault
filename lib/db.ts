@@ -98,6 +98,8 @@ function initConnection(conn: Database.Database): void {
   // Per-prompt color tag ('' = none) for fast visual scanning. DEFAULT '' means
   // existing rows read as uncolored with no backfill pass.
   addColumn("color", "color TEXT NOT NULL DEFAULT ''");
+  // Reusable-template flag; DEFAULT 0 backfills existing rows as non-templates.
+  addColumn("template", "template INTEGER NOT NULL DEFAULT 0");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -200,6 +202,9 @@ export type Snippet = {
   // Per-prompt color tag ("" = none). One of the fixed palette in
   // lib/prompt-colors.ts; validated on every write path.
   color: string;
+  // Whether this entry is a reusable template (a starting point in the New
+  // dialog). Metadata like favorite; not part of version history.
+  template: boolean;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -230,6 +235,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     model: (row.model as string) ?? "",
     kind: row.kind === "code" ? "code" : "prompt",
     color: (row.color as string) ?? "",
+    template: Boolean(row.template),
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

@@ -17,6 +17,8 @@ export type Snippet = {
   // Per-prompt color tag ("" = none), from the fixed palette in
   // lib/prompt-colors.ts. Purely a visual aid; validated on every write.
   color: string;
+  // Whether this entry is a reusable template offered in the New dialog.
+  template: boolean;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -32,6 +34,7 @@ export type CreateSnippetInput = {
   model?: string;
   kind?: SnippetKind;
   color?: string;
+  template?: boolean;
 };
 
 export type UpdateSnippetInput = {
@@ -43,6 +46,7 @@ export type UpdateSnippetInput = {
   model?: string;
   kind?: SnippetKind;
   color?: string;
+  template?: boolean;
 };
 
 // Check if running in Tauri.

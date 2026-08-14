@@ -48,6 +48,51 @@ export function diffLines(oldText: string, newText: string): DiffLine[] {
   return out;
 }
 
+// One row of a side-by-side (two-column) diff. `left`/`right` are the old/new
+// line text, or null where that side has no line (a spacer). `changed` marks a
+// row that came from an add/del run (rendered in color); unchanged rows show the
+// same text on both sides.
+export type DiffRow = {
+  left: string | null;
+  right: string | null;
+  changed: boolean;
+};
+
+// Rearrange a line diff into aligned two-column rows for a side-by-side view.
+// Consecutive deletions and additions are paired up (del on the left, add on the
+// right) so an edited line sits on one row; any surplus on either side gets a
+// spacer (null) opposite it. Unchanged lines appear on both sides.
+export function alignedDiff(oldText: string, newText: string): DiffRow[] {
+  const lines = diffLines(oldText, newText);
+  const rows: DiffRow[] = [];
+  let dels: string[] = [];
+  let adds: string[] = [];
+  const flush = () => {
+    const k = Math.max(dels.length, adds.length);
+    for (let i = 0; i < k; i++) {
+      rows.push({
+        left: i < dels.length ? dels[i] : null,
+        right: i < adds.length ? adds[i] : null,
+        changed: true,
+      });
+    }
+    dels = [];
+    adds = [];
+  };
+  for (const l of lines) {
+    if (l.type === "same") {
+      flush();
+      rows.push({ left: l.text, right: l.text, changed: false });
+    } else if (l.type === "del") {
+      dels.push(l.text);
+    } else {
+      adds.push(l.text);
+    }
+  }
+  flush();
+  return rows;
+}
+
 // Count of added/removed lines — for a compact "+N −M" summary.
 export function diffStats(lines: DiffLine[]): { added: number; removed: number } {
   let added = 0;

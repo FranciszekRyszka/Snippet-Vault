@@ -15,6 +15,7 @@ function snip(partial: Partial<Snippet> & { id: number }): Snippet {
     model: "",
     kind: partial.kind ?? "prompt",
     color: partial.color ?? "",
+    template: partial.template ?? false,
     copy_count: 0,
     last_used_at: null,
     created_at: "",

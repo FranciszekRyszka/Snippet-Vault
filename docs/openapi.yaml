@@ -671,6 +671,13 @@ components:
       enum: ["", red, orange, amber, green, teal, blue, violet, pink]
       default: ""
 
+    Template:
+      type: boolean
+      description: >
+        Whether the entry is a reusable template offered as a starting point in
+        the app's New menu. Coerced to a boolean on write.
+      default: false
+
     Snippet:
       type: object
       description: A prompt/snippet entry as returned by the API.
@@ -728,6 +735,8 @@ components:
           $ref: "#/components/schemas/Kind"
         color:
           $ref: "#/components/schemas/Color"
+        template:
+          $ref: "#/components/schemas/Template"
         copy_count:
           type: integer
           minimum: 0
@@ -770,6 +779,8 @@ components:
           $ref: "#/components/schemas/Kind"
         color:
           $ref: "#/components/schemas/Color"
+        template:
+          $ref: "#/components/schemas/Template"
 
     SnippetRestore:
       type: object
@@ -803,6 +814,8 @@ components:
           $ref: "#/components/schemas/Kind"
         color:
           $ref: "#/components/schemas/Color"
+        template:
+          $ref: "#/components/schemas/Template"
         copy_count:
           type: integer
           minimum: 0
@@ -891,6 +904,8 @@ components:
           $ref: "#/components/schemas/Kind"
         color:
           $ref: "#/components/schemas/Color"
+        template:
+          $ref: "#/components/schemas/Template"
         copy_count:
           type: integer
           minimum: 0
