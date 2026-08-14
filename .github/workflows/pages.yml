@@ -37,8 +37,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # enablement: true turns Pages on (Source = GitHub Actions) on the first
+      # run via the API, so no manual repo setting is needed.
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # The site is plain static files — no build step. Upload the folder as-is.
       - name: Upload website/ as the Pages artifact
