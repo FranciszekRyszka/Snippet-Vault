@@ -1,6 +1,6 @@
 [package]
 name = "snipvault"
-version = "3.4.0"
+version = "3.5.5"
 description = "A code snippets library"
 authors = ["SnipVault"]
 license = "MIT"
