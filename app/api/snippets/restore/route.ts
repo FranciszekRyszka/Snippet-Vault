@@ -6,6 +6,7 @@ import {
   sanitizeTags,
   sanitizeModel,
   sanitizeKind,
+  sanitizeColor,
   validTimestampOr,
 } from "@/lib/api-utils";
 
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       favorite,
       model,
       kind,
+      color,
       copy_count,
       last_used_at,
       created_at,
@@ -78,6 +80,7 @@ export async function POST(request: Request) {
     const sanitizedTags = sanitizeTags(tags);
     const sanitizedModel = sanitizeModel(model);
     const sanitizedKind = sanitizeKind(kind);
+    const sanitizedColor = sanitizeColor(color);
 
     // Must be a non-negative integer: a REAL (e.g. 1.5) stored in the INTEGER
     // column makes the desktop's typed read fail for the whole list.
@@ -92,8 +95,8 @@ export async function POST(request: Request) {
     const lastUsedAt = validTimestampOr(last_used_at, null);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, copy_count, last_used_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, copy_count, last_used_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
       favorite === true ? 1 : 0,
       sanitizedModel,
       sanitizedKind,
+      sanitizedColor,
       sanitizedCopyCount,
       lastUsedAt,
       createdAt,

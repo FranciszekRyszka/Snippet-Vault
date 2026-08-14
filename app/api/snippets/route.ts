@@ -2,7 +2,7 @@ import { dbForRequest, rowToSnippet, type Snippet } from "@/lib/db";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
-import { escapeLike, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api-utils";
+import { escapeLike, sanitizeTags, sanitizeModel, sanitizeKind, sanitizeColor } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
   const db = dbForRequest(request);
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model, kind } = body;
+    const { title, description, code, language, tags, model, kind, color } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -122,10 +122,11 @@ export async function POST(request: Request) {
     const sanitizedTags = sanitizeTags(tags);
     const sanitizedModel = sanitizeModel(model);
     const sanitizedKind = sanitizeKind(kind);
+    const sanitizedColor = sanitizeColor(color);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -136,7 +137,8 @@ export async function POST(request: Request) {
       language,
       JSON.stringify(sanitizedTags),
       sanitizedModel,
-      sanitizedKind
+      sanitizedKind,
+      sanitizedColor
     );
 
     const newSnippet = db.prepare("SELECT * FROM snippets WHERE id = ?").get(result.lastInsertRowid) as Record<string, unknown>;

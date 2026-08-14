@@ -95,6 +95,9 @@ function initConnection(conn: Database.Database): void {
   // Entry kind: 'prompt' (default) vs. 'code'. The DEFAULT backfills existing
   // rows, so no separate backfill pass is needed (unlike `uuid`).
   addColumn("kind", "kind TEXT NOT NULL DEFAULT 'prompt'");
+  // Per-prompt color tag ('' = none) for fast visual scanning. DEFAULT '' means
+  // existing rows read as uncolored with no backfill pass.
+  addColumn("color", "color TEXT NOT NULL DEFAULT ''");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -194,6 +197,9 @@ export type Snippet = {
   favorite: boolean;
   model: string;
   kind: "prompt" | "code";
+  // Per-prompt color tag ("" = none). One of the fixed palette in
+  // lib/prompt-colors.ts; validated on every write path.
+  color: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -223,6 +229,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     favorite: Boolean(row.favorite),
     model: (row.model as string) ?? "",
     kind: row.kind === "code" ? "code" : "prompt",
+    color: (row.color as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

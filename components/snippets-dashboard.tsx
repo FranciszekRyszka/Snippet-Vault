@@ -441,6 +441,7 @@ export function SnippetsDashboard() {
     tags: string[];
     model: string;
     kind: SnippetKind;
+    color: string;
   }) => {
     setSaving(true);
     try {
@@ -508,6 +509,8 @@ export function SnippetsDashboard() {
         tags: rev.tags,
         model: rev.model,
         kind: rev.kind,
+        // Color is metadata, not part of version history — keep the current one.
+        color: snip.color || "",
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -536,6 +539,7 @@ export function SnippetsDashboard() {
         tags: snip.tags,
         model: snip.model,
         kind: snip.kind,
+        color: snip.color,
       });
       setDetailId(null);
       await fetchSnippets();
@@ -579,6 +583,40 @@ export function SnippetsDashboard() {
       setSnippets((prev) =>
         prev.map((s) => (s.id === id ? { ...s, favorite: !favorite } : s))
       );
+    }
+  };
+
+  // Set (or clear) a prompt's color from the detail view. Routes through the
+  // normal update path with the snippet's current fields so it syncs; color
+  // isn't part of version history, so this never adds a revision. Optimistic
+  // with rollback on failure.
+  const handleSetColor = async (snippet: Snippet, color: string) => {
+    const prevColor = snippet.color || "";
+    if (color === prevColor) return;
+    const paint = (s: Snippet) => (s.id === snippet.id ? { ...s, color } : s);
+    setSnippets((prev) => prev.map(paint));
+    setAllSnippets((prev) => prev.map(paint));
+    try {
+      const updated = await updateSnippet(snippet.id, {
+        title: snippet.title,
+        description: snippet.description,
+        code: snippet.code,
+        language: snippet.language,
+        tags: snippet.tags || [],
+        model: snippet.model || "",
+        kind: snippet.kind,
+        color,
+      });
+      if (updated === null) {
+        throw new Error("This prompt no longer exists — it may have been deleted.");
+      }
+    } catch (err) {
+      console.error("Failed to set color:", err);
+      showError(err instanceof Error ? err.message : "Couldn't set the color.");
+      const rollback = (s: Snippet) =>
+        s.id === snippet.id ? { ...s, color: prevColor } : s;
+      setSnippets((prev) => prev.map(rollback));
+      setAllSnippets((prev) => prev.map(rollback));
     }
   };
 
@@ -694,6 +732,7 @@ export function SnippetsDashboard() {
           tags: s.tags || [],
           model: s.model || "",
           kind,
+          color: s.color || "",
         });
       } catch (err) {
         console.error("Bulk set-kind failed for", s.id, err);
@@ -735,6 +774,7 @@ export function SnippetsDashboard() {
           tags: [...(s.tags || []), tag],
           model: s.model || "",
           kind: s.kind,
+          color: s.color || "",
         });
       } catch (err) {
         console.error("Bulk add-tag failed for", s.id, err);
@@ -1519,6 +1559,7 @@ export function SnippetsDashboard() {
           onExported={handleExported}
           onRestoreRevision={handleRestoreRevision}
           onDuplicate={handleDuplicate}
+          onSetColor={handleSetColor}
         />
       )}
 

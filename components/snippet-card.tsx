@@ -20,6 +20,7 @@ import { extractVars } from "@/lib/prompt-vars";
 import { CodeBlock } from "./code-block";
 import { FillVarsDialog } from "./fill-vars-dialog";
 import { toMarkdown } from "@/lib/to-markdown";
+import { colorHex } from "@/lib/prompt-colors";
 import {
   HoverCard,
   HoverCardTrigger,
@@ -71,6 +72,7 @@ export function exportSnippet(snippet: Snippet): string | null {
       tags: snippet.tags || [],
       model: snippet.model || "",
       kind: snippet.kind || "prompt",
+      color: snippet.color || "",
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -134,6 +136,13 @@ export function SnippetCard({
 }: SnippetCardProps) {
   // Draw a focus ring + anchor id when keyboard-navigation highlights this card.
   const domId = `snip-card-${snippet.id}`;
+  // A per-prompt color shows as a thicker colored left border on the card (inline
+  // style so there's no dynamic-Tailwind-class concern); uncolored cards are
+  // unchanged. Applied to both the grid and list article below.
+  const accent = colorHex(snippet.color);
+  const accentStyle = accent
+    ? { borderLeftColor: accent, borderLeftWidth: "4px" }
+    : undefined;
   const focusRing = focused ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "";
   // In selection mode, a selected card gets a tinted border/ring instead.
   const selectRing = selected ? "border-primary ring-1 ring-primary" : "";
@@ -327,6 +336,7 @@ export function SnippetCard({
       <>
       <article
         id={domId}
+        style={accentStyle}
         className={`group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/30 ${focusRing} ${selectRing}`}
       >
         {selectBox}
@@ -408,6 +418,7 @@ export function SnippetCard({
     <>
     <article
       id={domId}
+      style={accentStyle}
       className={`group rounded-xl border border-border bg-card p-5 transition-colors hover:border-ring/30 ${focusRing} ${selectRing}`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">

@@ -25,8 +25,10 @@ import {
   FileText,
   Link2,
   Unlink,
+  Palette,
 } from "lucide-react";
 import { getLanguageLabel } from "@/lib/languages";
+import { PROMPT_COLORS, colorHex, colorLabel } from "@/lib/prompt-colors";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { extractVars } from "@/lib/prompt-vars";
 import { extractLinks, resolveLink, backlinksFor } from "@/lib/prompt-links";
@@ -60,6 +62,8 @@ type SnippetDetailProps = {
   // which itself captures the current state). Resolves once reloaded.
   onRestoreRevision: (snippet: Snippet, revision: SnippetRevision) => Promise<void>;
   onDuplicate: (snippet: Snippet) => void;
+  // Set (or clear, with "") the prompt's color tag.
+  onSetColor: (snippet: Snippet, color: string) => void;
   // The whole library, so [[title]] links and backlinks can be resolved.
   allSnippets: Snippet[];
   // Open another prompt in place (used by the linked-prompts chips).
@@ -92,10 +96,14 @@ export function SnippetDetail({
   onExported,
   onRestoreRevision,
   onDuplicate,
+  onSetColor,
   allSnippets,
   onOpenLink,
 }: SnippetDetailProps) {
   const [copied, setCopied] = useState(false);
+  // Header color-picker popover.
+  const [colorOpen, setColorOpen] = useState(false);
+  const currentHex = colorHex(snippet.color);
   const [copiedMd, setCopiedMd] = useState(false);
   const [showFill, setShowFill] = useState(false);
   // Rendered-Markdown vs raw view. Prompts are often Markdown, but the raw view
@@ -270,6 +278,69 @@ export function SnippetDetail({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <div className="relative">
+              <button
+                onClick={() => setColorOpen((v) => !v)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Set color"
+                aria-haspopup="true"
+                aria-expanded={colorOpen}
+                title={`Color: ${colorLabel(snippet.color)}`}
+              >
+                {currentHex ? (
+                  <span
+                    className="h-4 w-4 rounded-full ring-1 ring-border"
+                    style={{ backgroundColor: currentHex }}
+                  />
+                ) : (
+                  <Palette className="h-4 w-4" />
+                )}
+              </button>
+              {colorOpen && (
+                <>
+                  {/* Click-away backdrop closes the popover. */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setColorOpen(false)}
+                    aria-hidden
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-1 flex w-max items-center gap-1.5 rounded-lg border border-border bg-popover p-2 shadow-lg">
+                    <button
+                      onClick={() => {
+                        onSetColor(snippet, "");
+                        setColorOpen(false);
+                      }}
+                      aria-label="No color"
+                      aria-pressed={!snippet.color}
+                      title="No color"
+                      className={`flex h-6 w-6 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-accent ${
+                        !snippet.color ? "border-ring ring-2 ring-ring" : "border-input"
+                      }`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                    {PROMPT_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        onClick={() => {
+                          onSetColor(snippet, c.value);
+                          setColorOpen(false);
+                        }}
+                        aria-label={c.label}
+                        aria-pressed={snippet.color === c.value}
+                        title={c.label}
+                        style={{ backgroundColor: c.hex }}
+                        className={`h-6 w-6 rounded-full transition-transform hover:scale-110 ${
+                          snippet.color === c.value
+                            ? "ring-2 ring-ring ring-offset-2 ring-offset-popover"
+                            : ""
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={() => onToggleFavorite(snippet.id, !snippet.favorite)}
               className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${

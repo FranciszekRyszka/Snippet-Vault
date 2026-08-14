@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Added
+- **Per-prompt color.** Tag any prompt with a color from a small palette for
+  faster visual scanning of the grid/list — the card shows a colored left
+  accent. Set it while editing (a swatch row in the form) or change it in a
+  click from the detail view's color picker. The color travels with the prompt
+  through export/import and sync, and is validated to the fixed palette on every
+  write path in both backends; it's visual metadata, so it doesn't add a version
+  to a prompt's history.
+
 ## [3.4.0] — 2026-08-11
 
 ### Added

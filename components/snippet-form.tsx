@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { LANGUAGES } from "@/lib/languages";
 import { MODEL_SUGGESTIONS } from "@/lib/models";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
+import { PROMPT_COLORS } from "@/lib/prompt-colors";
 import type { Snippet, SnippetKind } from "@/lib/tauri-api";
 
 type SnippetFormProps = {
@@ -19,6 +20,7 @@ type SnippetFormProps = {
     tags: string[];
     model: string;
     kind: SnippetKind;
+    color: string;
   }) => void;
   onCancel: () => void;
   saving: boolean;
@@ -38,6 +40,7 @@ export function SnippetForm({
   const [language, setLanguage] = useState("text");
   const [model, setModel] = useState("");
   const [kind, setKind] = useState<SnippetKind>("prompt");
+  const [color, setColor] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -63,6 +66,7 @@ export function SnippetForm({
       setLanguage(snippet.language);
       setModel(snippet.model || "");
       setKind(snippet.kind || "prompt");
+      setColor(snippet.color || "");
       setTags(snippet.tags || []);
     } else {
       setTitle("");
@@ -71,6 +75,7 @@ export function SnippetForm({
       setLanguage("text");
       setModel("");
       setKind("prompt");
+      setColor("");
       setTags([]);
     }
     setTagInput("");
@@ -148,6 +153,7 @@ export function SnippetForm({
       tags: finalTags,
       model: model.trim(),
       kind,
+      color,
     });
   };
 
@@ -199,6 +205,45 @@ export function SnippetForm({
                 >
                   {k === "code" ? "Code snippet" : "Prompt"}
                 </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-foreground">
+              Color{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setColor("")}
+                aria-label="No color"
+                aria-pressed={color === ""}
+                title="No color"
+                className={`flex h-7 w-7 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-accent ${
+                  color === "" ? "border-ring ring-2 ring-ring" : "border-input"
+                }`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              {PROMPT_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setColor(c.value)}
+                  aria-label={c.label}
+                  aria-pressed={color === c.value}
+                  title={c.label}
+                  style={{ backgroundColor: c.hex }}
+                  className={`h-7 w-7 rounded-full transition-transform hover:scale-110 ${
+                    color === c.value
+                      ? "ring-2 ring-ring ring-offset-2 ring-offset-card"
+                      : ""
+                  }`}
+                />
               ))}
             </div>
           </div>

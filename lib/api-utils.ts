@@ -33,6 +33,27 @@ export function sanitizeKind(kind: unknown): "prompt" | "code" {
   return typeof kind === "string" && kind.trim() === "code" ? "code" : "prompt";
 }
 
+// The per-prompt color palette (see lib/prompt-colors.ts). Kept as a literal
+// here so this module has no client-code dependency; the two lists must match.
+const VALID_COLORS = new Set([
+  "red",
+  "orange",
+  "amber",
+  "green",
+  "teal",
+  "blue",
+  "violet",
+  "pink",
+]);
+
+// Coerce a color to the allowed palette. Anything outside it (missing, unknown,
+// non-string) becomes "" — no color. Mirrors the desktop's normalize_color.
+export function sanitizeColor(color: unknown): string {
+  return typeof color === "string" && VALID_COLORS.has(color.trim())
+    ? color.trim()
+    : "";
+}
+
 // Parse a route `id` segment as a non-negative integer, or return null. Guards
 // against parseInt's lax coercion, where "1e2" -> 1 and "7abc" -> 7 would
 // otherwise target the wrong row.

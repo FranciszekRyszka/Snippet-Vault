@@ -1,7 +1,7 @@
 import { dbForRequest, rowToSnippet, captureRevisionIfChanged } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
-import { parseId, sanitizeTags, sanitizeModel, sanitizeKind } from "@/lib/api-utils";
+import { parseId, sanitizeTags, sanitizeModel, sanitizeKind, sanitizeColor } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -17,7 +17,7 @@ export async function PUT(
   const db = dbForRequest(request);
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model, kind } = body;
+    const { title, description, code, language, tags, model, kind, color } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -43,6 +43,7 @@ export async function PUT(
     const sanitizedTags = sanitizeTags(tags);
     const sanitizedModel = sanitizeModel(model);
     const sanitizedKind = sanitizeKind(kind);
+    const sanitizedColor = sanitizeColor(color);
     const tagsJson = JSON.stringify(sanitizedTags);
 
     // Capture the pre-edit state as a revision (unless nothing changed) and
@@ -64,7 +65,7 @@ export async function PUT(
       const res = db
         .prepare(
           `UPDATE snippets
-           SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, updated_at = datetime('now')
+           SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, updated_at = datetime('now')
            WHERE id = ?`
         )
         .run(
@@ -75,6 +76,7 @@ export async function PUT(
           tagsJson,
           sanitizedModel,
           sanitizedKind,
+          sanitizedColor,
           numericId
         );
       return res.changes;

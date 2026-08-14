@@ -663,6 +663,14 @@ components:
       enum: [prompt, code]
       default: prompt
 
+    Color:
+      type: string
+      description: >
+        Optional per-prompt color tag for visual scanning. Empty string means no
+        color. Any value outside the fixed palette is coerced to "" on write.
+      enum: ["", red, orange, amber, green, teal, blue, violet, pink]
+      default: ""
+
     Snippet:
       type: object
       description: A prompt/snippet entry as returned by the API.
@@ -718,6 +726,8 @@ components:
           example: gpt-4o
         kind:
           $ref: "#/components/schemas/Kind"
+        color:
+          $ref: "#/components/schemas/Color"
         copy_count:
           type: integer
           minimum: 0
@@ -758,6 +768,8 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/Kind"
+        color:
+          $ref: "#/components/schemas/Color"
 
     SnippetRestore:
       type: object
@@ -789,6 +801,8 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/Kind"
+        color:
+          $ref: "#/components/schemas/Color"
         copy_count:
           type: integer
           minimum: 0
@@ -875,6 +889,8 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/Kind"
+        color:
+          $ref: "#/components/schemas/Color"
         copy_count:
           type: integer
           minimum: 0
