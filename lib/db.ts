@@ -100,6 +100,9 @@ function initConnection(conn: Database.Database): void {
   addColumn("color", "color TEXT NOT NULL DEFAULT ''");
   // Reusable-template flag; DEFAULT 0 backfills existing rows as non-templates.
   addColumn("template", "template INTEGER NOT NULL DEFAULT 0");
+  // Device that last wrote the row ('' = unknown); stamped by the desktop app,
+  // travels through sync. DEFAULT '' backfills existing rows.
+  addColumn("last_device", "last_device TEXT NOT NULL DEFAULT ''");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -205,6 +208,8 @@ export type Snippet = {
   // Whether this entry is a reusable template (a starting point in the New
   // dialog). Metadata like favorite; not part of version history.
   template: boolean;
+  // Friendly name of the device that last wrote this row ("" = unknown).
+  last_device: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -236,6 +241,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     kind: row.kind === "code" ? "code" : "prompt",
     color: (row.color as string) ?? "",
     template: Boolean(row.template),
+    last_device: (row.last_device as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

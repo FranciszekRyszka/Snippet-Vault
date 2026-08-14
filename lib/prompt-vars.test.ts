@@ -61,17 +61,21 @@ describe("fillVars", () => {
       fillVars("Tone: {{tone:select(formal,playful)}}", { tone: "playful" })
     ).toBe("Tone: playful");
   });
+  it("strips a hint when substituting (default or provided)", () => {
+    expect(fillVars("Hi {{name=friend|the reader}}", {})).toBe("Hi friend");
+    expect(fillVars("Hi {{name|the reader}}", { name: "Sam" })).toBe("Hi Sam");
+  });
 });
 
 describe("parseVars", () => {
   it("parses a plain variable as text with no default", () => {
     expect(parseVars("{{topic}}")).toEqual([
-      { name: "topic", type: "text", options: [], default: "" },
+      { name: "topic", type: "text", options: [], default: "", hint: "" },
     ]);
   });
   it("parses a default value", () => {
     expect(parseVars("{{topic=AI safety}}")).toEqual([
-      { name: "topic", type: "text", options: [], default: "AI safety" },
+      { name: "topic", type: "text", options: [], default: "AI safety", hint: "" },
     ]);
   });
   it("parses select options and a default choice", () => {
@@ -81,13 +85,14 @@ describe("parseVars", () => {
         type: "select",
         options: ["formal", "playful", "concise"],
         default: "formal",
+        hint: "",
       },
     ]);
   });
   it("parses multiline, number, and date types", () => {
     expect(parseVars("{{notes:multiline}}")[0].type).toBe("multiline");
     expect(parseVars("{{count:number=3}}")).toEqual([
-      { name: "count", type: "number", options: [], default: "3" },
+      { name: "count", type: "number", options: [], default: "3", hint: "" },
     ]);
     expect(parseVars("{{when:date}}")[0].type).toBe("date");
   });
@@ -97,7 +102,25 @@ describe("parseVars", () => {
   });
   it("keeps the first occurrence's spec for a repeated name", () => {
     expect(parseVars("{{tone:select(a,b)=a}} … {{tone}}")).toEqual([
-      { name: "tone", type: "select", options: ["a", "b"], default: "a" },
+      { name: "tone", type: "select", options: ["a", "b"], default: "a", hint: "" },
+    ]);
+  });
+  it("parses a hint, alone and alongside a default", () => {
+    expect(parseVars("{{topic|what to write about}}")).toEqual([
+      { name: "topic", type: "text", options: [], default: "", hint: "what to write about" },
+    ]);
+    expect(parseVars("{{tone=formal|how it should read}}")).toEqual([
+      { name: "tone", type: "text", options: [], default: "formal", hint: "how it should read" },
+    ]);
+  });
+  it("keeps a hint out of the default (default stops at the pipe)", () => {
+    const spec = parseVars("{{name=Sam|the reader's name}}")[0];
+    expect(spec.default).toBe("Sam");
+    expect(spec.hint).toBe("the reader's name");
+  });
+  it("supports a hint on a typed variable", () => {
+    expect(parseVars("{{tone:select(a,b)=a|pick a tone}}")).toEqual([
+      { name: "tone", type: "select", options: ["a", "b"], default: "a", hint: "pick a tone" },
     ]);
   });
 });

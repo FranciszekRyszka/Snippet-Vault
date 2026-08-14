@@ -26,6 +26,12 @@ export function sanitizeModel(model: unknown): string {
   return typeof model === "string" ? model.trim().slice(0, 100) : "";
 }
 
+// Bound a device name (the `last_device` stamp) to a trimmed, length-capped
+// string. Mirrors the desktop's MAX_DEVICE_LEN so both sides agree.
+export function sanitizeDevice(device: unknown): string {
+  return typeof device === "string" ? device.trim().slice(0, 64) : "";
+}
+
 // Coerce an entry kind to the allowed set. Anything that isn't exactly "code"
 // (missing, unknown, non-string) becomes "prompt" — the safe default for a
 // prompt vault. Mirrors the desktop's normalize_kind; never throws.

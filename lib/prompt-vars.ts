@@ -4,9 +4,10 @@
 // and the live-highlight body renderer.
 //
 // The placeholder grammar is backward-compatible — a plain `{{name}}` behaves
-// exactly as before — and optionally carries a **type** and a **default**:
+// exactly as before — and optionally carries a **type**, a **default**, and a
+// **hint** (help text shown under the field in the fill dialog):
 //
-//   {{ name [ :type[(opts)] ] [ =default ] }}
+//   {{ name [ :type[(opts)] ] [ =default ] [ |hint ] }}
 //
 //   {{topic}}                        text, no default
 //   {{topic=AI safety}}              text with a default value
@@ -15,29 +16,34 @@
 //   {{notes:multiline}}              a multi-line textarea
 //   {{count:number=3}}               a number field with a default
 //   {{when:date}}                    a date field
+//   {{topic|what to write about}}    a hint under the field
+//   {{tone=formal|how it should read}}  a default *and* a hint
 //
 // Names may contain word chars, dots, and hyphens (e.g. {{user.name}}); an
 // unknown type falls back to plain text, so a stray `:something` never breaks a
-// prompt.
+// prompt. A `|` starts the hint, so a default value can't itself contain `|`.
 
 export type VarType = "text" | "multiline" | "number" | "date" | "select";
 
 // One parsed variable. `name` is the stable key used for values and storage;
-// `options` is only meaningful for `select`; `default` is "" when none is given.
+// `options` is only meaningful for `select`; `default` is "" when none is given;
+// `hint` is optional help text shown under the field ("" when none).
 export type VarSpec = {
   name: string;
   type: VarType;
   options: string[];
   default: string;
+  hint: string;
 };
 
 // One run of body text, flagged as a placeholder or plain text, for the
 // highlight renderer (keeps the placeholder-matching regex in one place).
 export type VarSegment = { text: string; isVar: boolean };
 
-// name  :  type  ( opts )   =  default
+// name  :  type  ( opts )   =  default   |  hint
+// The default excludes `|` so a trailing `|hint` isn't swallowed into it.
 const VAR_PATTERN =
-  String.raw`\{\{\s*([\w.-]+)\s*(?::\s*([a-zA-Z]+)\s*(?:\(([^)]*)\))?\s*)?(?:=([^}]*))?\}\}`;
+  String.raw`\{\{\s*([\w.-]+)\s*(?::\s*([a-zA-Z]+)\s*(?:\(([^)]*)\))?\s*)?(?:=([^}|]*))?(?:\|([^}]*))?\}\}`;
 
 // A fresh global regex per call — these helpers aren't hot paths, and it keeps
 // the shared `lastIndex` state from leaking between matchAll / replace uses.
@@ -80,7 +86,13 @@ export function parseVars(code: string): VarSpec[] {
     const name = m[1];
     if (seen.has(name)) continue;
     const { type, options } = normalizeType(m[2], m[3]);
-    seen.set(name, { name, type, options, default: (m[4] ?? "").trim() });
+    seen.set(name, {
+      name,
+      type,
+      options,
+      default: (m[4] ?? "").trim(),
+      hint: (m[5] ?? "").trim(),
+    });
   }
   return [...seen.values()];
 }

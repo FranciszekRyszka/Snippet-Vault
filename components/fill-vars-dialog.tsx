@@ -183,6 +183,9 @@ function VarField({
           className={fieldClass}
         />
       )}
+      {spec.hint && (
+        <span className="text-xs text-muted-foreground">{spec.hint}</span>
+      )}
     </label>
   );
 }

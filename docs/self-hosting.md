@@ -26,6 +26,25 @@ startup and whenever you click **Sync now**. See
 
 Requires Docker and the Docker Compose plugin.
 
+### Quickest — one command
+
+If you just want a single-user server running with a generated token and don't
+need the repo checked out, run the installer. It pulls the prebuilt image,
+generates a strong token, writes a `.env` + `docker-compose.yml` into
+`./snipvault/`, and starts the container — then prints the URL and token to
+paste into the desktop app:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FranciszekRyszka/Snippet-Vault/main/install.sh | sh
+```
+
+Prefer to read it first? Download `install.sh`, skim it, then `sh install.sh`.
+Re-running is safe — it keeps your existing token and data and just pulls the
+latest image and restarts (that's also how you update). Knobs:
+`SNIPVAULT_DIR`, `SNIPVAULT_PORT`, and `SNIPVAULT_TOKEN` (to supply your own).
+
+### Full checkout (for HTTPS, multiple users, backups, or building locally)
+
 ```bash
 # 1. Get the code on the server
 git clone https://github.com/FranciszekRyszka/Snippet-Vault.git
@@ -62,6 +81,31 @@ Update to a newer version later:
 git pull
 docker compose up -d --build
 ```
+
+### Portainer / Unraid
+
+On a NAS or a Portainer host you don't need the installer or a checkout — add a
+**Stack** (Portainer) or a **Compose** project (Unraid's Compose Manager) and
+paste this minimal stack, setting a strong token in the environment:
+
+```yaml
+services:
+  snipvault:
+    image: ghcr.io/franciszekryszka/snippet-vault:latest
+    container_name: snipvault
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      SNIPVAULT_TOKEN: paste-a-long-random-token-here
+    volumes:
+      - snipvault-data:/app/data
+volumes:
+  snipvault-data:
+```
+
+Deploy the stack, then point the desktop app at `http://<nas-ip>:3000` with that
+token. The `snipvault-data` volume keeps your library across image updates.
 
 ## Option 2 — Bare Node + systemd
 

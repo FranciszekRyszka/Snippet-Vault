@@ -11,6 +11,7 @@ use std::collections::HashSet;
 
 const MAX_TITLE_LEN: usize = 255;
 const MAX_MODEL_LEN: usize = 100;
+const MAX_DEVICE_LEN: usize = 64;
 const MAX_TAGS: usize = 20;
 // Match the server's sync ingress caps (app/api/sync/route.ts) so both
 // directions bound the same fields to the same sizes.
@@ -141,6 +142,7 @@ pub fn sanitize_restore(mut s: Snippet) -> Result<Snippet, String> {
     s.model = truncate_chars(s.model.trim(), MAX_MODEL_LEN);
     s.kind = normalize_kind(Some(s.kind));
     s.color = normalize_color(Some(s.color));
+    s.last_device = truncate_chars(s.last_device.trim(), MAX_DEVICE_LEN);
     s.copy_count = s.copy_count.clamp(0, i64::MAX - 1);
 
     let now = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
@@ -171,6 +173,7 @@ pub fn sanitize_sync_record(mut r: SyncRecord) -> SyncRecord {
     r.model = truncate_chars(r.model.trim(), MAX_MODEL_LEN);
     r.kind = normalize_kind(Some(r.kind));
     r.color = normalize_color(Some(r.color));
+    r.last_device = truncate_chars(r.last_device.trim(), MAX_DEVICE_LEN);
     r.tags = normalize_tags(Some(r.tags));
     r.copy_count = r.copy_count.clamp(0, i64::MAX - 1);
     r.created_at = valid_timestamp_or(&r.created_at, &now);

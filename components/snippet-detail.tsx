@@ -256,6 +256,10 @@ export function SnippetDetail({
     { label: "Updated", value: formatDateTime(snippet.updated_at) },
     { label: "Times copied", value: formatCount(snippet.copy_count) },
     { label: "Last copied", value: formatDateTime(snippet.last_used_at) },
+    // Only shown once a device has been named (desktop sync provenance).
+    ...(snippet.last_device
+      ? [{ label: "Last edited on", value: snippet.last_device }]
+      : []),
   ];
 
   return (

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// place so every SELECT stays in sync with the row mapper. New columns (`uuid`,
 /// then `kind`) are appended last so the earlier indices stay stable.
 const SNIPPET_COLUMNS: &str =
-    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color, template";
+    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color, template, last_device";
 
 /// How many past revisions to keep per snippet. Older ones are pruned on each
 /// new capture so history stays bounded.
@@ -80,6 +80,11 @@ pub struct Snippet {
     /// the New dialog). Metadata like `favorite` — not part of prompt history.
     #[serde(default)]
     pub template: bool,
+    /// Friendly name of the device that last wrote this row ("" = unknown).
+    /// Stamped by the desktop app on local writes; travels through sync so other
+    /// devices can see where an edit came from.
+    #[serde(default)]
+    pub last_device: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -158,6 +163,8 @@ pub struct SyncRecord {
     pub color: String,
     #[serde(default)]
     pub template: bool,
+    #[serde(default)]
+    pub last_device: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -191,9 +198,10 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
         // `color` is at index 14. Tolerate NULL on a not-yet-migrated row by
         // falling back to "" (no color).
         color: row.get::<_, Option<String>>(14)?.unwrap_or_default(),
-        // `template` is the last column (index 15). Tolerate NULL by defaulting
-        // to false (not a template).
+        // `template` is at index 15. Tolerate NULL by defaulting to false.
         template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
+        // `last_device` is the last column (index 16). Tolerate NULL → "".
+        last_device: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
         // Read as i64, but fall back to a truncated REAL: SQLite's integer
         // arithmetic can overflow a copy_count into a float, and this column has
         // seen bad writes before. A defensive read keeps one odd row from
@@ -210,6 +218,9 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
 pub struct Database {
     conn: Mutex<Connection>,
     path: PathBuf,
+    /// This install's friendly name, stamped into `last_device` on local writes.
+    /// Set from config after open (empty until then → rows get "" = unknown).
+    device: Mutex<String>,
 }
 
 impl Database {
@@ -307,6 +318,13 @@ impl Database {
                 [],
             )?;
         }
+        // Device that last wrote the row. DEFAULT '' backfills existing rows.
+        if !existing.contains("last_device") {
+            conn.execute(
+                "ALTER TABLE snippets ADD COLUMN last_device TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
 
         // Sync support: a stable cross-machine identity and a soft-delete
         // tombstone. `uuid` is added nullable, backfilled for existing rows,
@@ -360,12 +378,25 @@ impl Database {
         Ok(Self {
             conn: Mutex::new(conn),
             path: path.to_path_buf(),
+            device: Mutex::new(String::new()),
         })
     }
 
     /// The filesystem path this database is stored at.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Set this install's device name, stamped onto `last_device` for subsequent
+    /// local writes (create/update/restore). Trimmed and capped for safety.
+    pub fn set_device(&self, name: &str) {
+        let cleaned: String = name.trim().chars().take(64).collect();
+        *self.device.lock().unwrap() = cleaned;
+    }
+
+    /// The current device name (already trimmed/capped by `set_device`).
+    fn device_name(&self) -> String {
+        self.device.lock().unwrap().clone()
     }
 
     /// Write a consistent copy of the database to `dest` using SQLite's online
@@ -503,6 +534,29 @@ impl Database {
         Ok(n as i64)
     }
 
+    /// Auto-purge: blank the content of tombstones that were deleted (last
+    /// updated) more than `days` days ago, keeping the tombstone itself for sync
+    /// — the age-filtered version of `purge_deleted`. Fixed-width UTC timestamps
+    /// compare correctly as text, so the cutoff comparison is a plain string
+    /// compare. Returns how many were purged. A non-positive `days` is a no-op.
+    pub fn purge_deleted_older_than(&self, days: i64) -> Result<i64> {
+        if days <= 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now();
+        let cutoff = (now - chrono::Duration::days(days))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+        let n = conn.execute(
+            "UPDATE snippets SET title = '', description = '', code = '', tags = '[]', model = '', updated_at = ? \
+             WHERE deleted = 1 AND (title != '' OR code != '') AND updated_at < ?",
+            params![now_str, cutoff],
+        )?;
+        Ok(n as i64)
+    }
+
     /// Rename, merge, or delete a tag library-wide. For every (non-deleted)
     /// snippet whose tags contain `from`, replace `from` with `to` (deduped,
     /// order preserved) — or drop it entirely when `to` is None/empty (delete).
@@ -584,12 +638,13 @@ impl Database {
         let kind = input.kind.unwrap_or_else(default_kind);
         let color = input.color.unwrap_or_default();
         let template = input.template.unwrap_or(false) as i64;
+        let device = self.device_name();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let uuid = uuid::Uuid::new_v4().to_string();
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, template, now, now],
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, last_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, now, now],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -607,6 +662,7 @@ impl Database {
         let kind = input.kind.unwrap_or_else(default_kind);
         let color = input.color.unwrap_or_default();
         let template = input.template.unwrap_or(false) as i64;
+        let device = self.device_name();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // Capture the pre-edit state as a revision so it can be viewed/restored.
@@ -649,8 +705,8 @@ impl Database {
         }
 
         let rows_affected = conn.execute(
-            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, updated_at = ? WHERE id = ?",
-            params![input.title, description, input.code, input.language, tags_json, model, kind, color, template, now, id],
+            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, updated_at = ? WHERE id = ?",
+            params![input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, now, id],
         )?;
 
         drop(conn);
@@ -757,12 +813,14 @@ impl Database {
     /// than creating a duplicate elsewhere. Falls back to re-inserting (with the
     /// original uuid, or a fresh one) only if the row is genuinely gone.
     pub fn restore_snippet(&self, s: Snippet) -> Result<Snippet> {
+        // This device is bringing the row back, so it becomes the last writer.
+        let device = self.device_name();
         if !s.uuid.is_empty() {
             let conn = self.conn.lock().unwrap();
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
             let affected = conn.execute(
-                "UPDATE snippets SET deleted = 0, updated_at = ? WHERE uuid = ?",
-                params![now, s.uuid],
+                "UPDATE snippets SET deleted = 0, last_device = ?, updated_at = ? WHERE uuid = ?",
+                params![device, now, s.uuid],
             )?;
             drop(conn);
             if affected > 0 {
@@ -781,11 +839,11 @@ impl Database {
         };
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, copy_count, last_used_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, copy_count, last_used_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 uuid, s.title, s.description, s.code, s.language, tags_json,
-                s.favorite as i64, s.model, s.kind, s.color, s.template as i64, s.copy_count, s.last_used_at, s.created_at, s.updated_at
+                s.favorite as i64, s.model, s.kind, s.color, s.template as i64, device, s.copy_count, s.last_used_at, s.created_at, s.updated_at
             ],
         )?;
 
@@ -801,7 +859,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uuid, title, description, code, language, tags, favorite, model, \
-             copy_count, last_used_at, created_at, updated_at, deleted, kind, color, template FROM snippets",
+             copy_count, last_used_at, created_at, updated_at, deleted, kind, color, template, last_device FROM snippets",
         )?;
         let iter = stmt.query_map([], |row| {
             let tags_json: String = row.get(5)?;
@@ -822,6 +880,7 @@ impl Database {
                     .unwrap_or_else(|| "prompt".to_string()),
                 color: row.get::<_, Option<String>>(14)?.unwrap_or_default(),
                 template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
+                last_device: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
                 copy_count: row
                     .get::<_, i64>(8)
                     .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
@@ -862,11 +921,11 @@ impl Database {
             match existing {
                 None => {
                     tx.execute(
-                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, copy_count, last_used_at, created_at, updated_at, deleted)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, copy_count, last_used_at, created_at, updated_at, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         params![
                             rec.uuid, rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64
                         ],
                     )?;
@@ -874,10 +933,10 @@ impl Database {
                 }
                 Some(current) if rec.updated_at > current => {
                     tx.execute(
-                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, template = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
+                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
                         params![
                             rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64, rec.uuid
                         ],
                     )?;
@@ -1166,6 +1225,49 @@ mod sqli_tests {
     }
 
     #[test]
+    fn last_device_is_stamped_and_travels_with_sync() {
+        let db = temp_db();
+
+        // No device set yet → "" (unknown).
+        let a = db.create_snippet(mk("first", "x")).unwrap();
+        assert_eq!(a.last_device, "");
+
+        // After naming this device, new writes are stamped.
+        db.set_device("laptop");
+        let b = db.create_snippet(mk("second", "y")).unwrap();
+        assert_eq!(b.last_device, "laptop");
+
+        // An update re-stamps with the current device name.
+        db.set_device("desktop");
+        db.update_snippet(
+            a.id,
+            UpdateSnippetInput {
+                title: "first".into(),
+                description: None,
+                code: "x2".into(),
+                language: "text".into(),
+                tags: None,
+                model: None,
+                kind: None,
+                color: None,
+                template: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(db.get_snippet(a.id).unwrap().unwrap().last_device, "desktop");
+
+        // The stamp travels through sync to another database (which preserves the
+        // *remote* device, not stamping its own).
+        let records = db.get_all_for_sync().unwrap();
+        let db2 = temp_db();
+        db2.set_device("phone");
+        db2.apply_sync_records(records).unwrap();
+        let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
+        let second = synced.iter().find(|s| s.title == "second").unwrap();
+        assert_eq!(second.last_device, "laptop");
+    }
+
+    #[test]
     fn wildcard_payloads_match_literally_not_as_wildcards() {
         let db = temp_db();
         db.create_snippet(mk("alpha", "one")).unwrap();
@@ -1277,6 +1379,47 @@ mod sqli_tests {
         // The live snippet is untouched, and a second purge is a no-op.
         assert_eq!(db.get_snippet(a.id).unwrap().unwrap().title, "keep");
         assert_eq!(db.purge_deleted().unwrap(), 0);
+    }
+
+    #[test]
+    fn auto_purge_blanks_only_old_tombstones() {
+        let db = temp_db();
+        let a = db.create_snippet(mk("recent", "x")).unwrap();
+        let b = db.create_snippet(mk("old", "y")).unwrap();
+        db.delete_snippet(a.id).unwrap();
+        db.delete_snippet(b.id).unwrap();
+
+        // Backdate b's tombstone to 40 days ago (a was just deleted → recent).
+        {
+            let conn = db.conn.lock().unwrap();
+            let old = (chrono::Utc::now() - chrono::Duration::days(40))
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            conn.execute(
+                "UPDATE snippets SET updated_at = ? WHERE id = ?",
+                params![old, b.id],
+            )
+            .unwrap();
+        }
+
+        // Purge tombstones older than 30 days → only b.
+        assert_eq!(db.purge_deleted_older_than(30).unwrap(), 1);
+
+        // b is blanked (dropped from the Trash view); a still there.
+        let trash = db.get_deleted().unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].title, "recent");
+
+        // b survives as a blanked tombstone for sync.
+        let all = db.get_all_for_sync().unwrap();
+        let tomb = all.iter().find(|r| r.uuid == b.uuid).expect("tombstone kept");
+        assert!(tomb.deleted);
+        assert_eq!(tomb.title, "");
+
+        // Idempotent: nothing left older than 30 days now.
+        assert_eq!(db.purge_deleted_older_than(30).unwrap(), 0);
+        // A zero/negative retention is a no-op.
+        assert_eq!(db.purge_deleted_older_than(0).unwrap(), 0);
     }
 
     #[test]

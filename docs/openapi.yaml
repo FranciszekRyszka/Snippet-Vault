@@ -678,6 +678,15 @@ components:
         the app's New menu. Coerced to a boolean on write.
       default: false
 
+    LastDevice:
+      type: string
+      description: >
+        Friendly name of the device that last wrote this row ("" = unknown).
+        Stamped by the desktop app on local writes and carried through sync;
+        trimmed and length-capped (64 chars) on ingest.
+      maxLength: 64
+      default: ""
+
     Snippet:
       type: object
       description: A prompt/snippet entry as returned by the API.
@@ -737,6 +746,8 @@ components:
           $ref: "#/components/schemas/Color"
         template:
           $ref: "#/components/schemas/Template"
+        last_device:
+          $ref: "#/components/schemas/LastDevice"
         copy_count:
           type: integer
           minimum: 0
@@ -816,6 +827,8 @@ components:
           $ref: "#/components/schemas/Color"
         template:
           $ref: "#/components/schemas/Template"
+        last_device:
+          $ref: "#/components/schemas/LastDevice"
         copy_count:
           type: integer
           minimum: 0
@@ -906,6 +919,8 @@ components:
           $ref: "#/components/schemas/Color"
         template:
           $ref: "#/components/schemas/Template"
+        last_device:
+          $ref: "#/components/schemas/LastDevice"
         copy_count:
           type: integer
           minimum: 0

@@ -14,6 +14,23 @@ ships.
 ## [Unreleased]
 
 ### Added
+- **Per-field variable hints.** A `{{placeholder}}` can now carry a short hint
+  shown under its field in the fill dialog: `{{topic|what to write about}}`, and
+  it combines with a default — `{{tone=formal|how it should read}}`. A `|` starts
+  the hint (so a default value stops at the pipe). Plain `{{name}}` is unchanged.
+- **Trash auto-purge (desktop).** A new **Settings → This device** option clears
+  the *contents* of items deleted longer ago than a chosen window (Off / 7 / 30 /
+  90 days) on launch. The deletion tombstone is kept so the delete still syncs —
+  only the old content is dropped.
+- **Per-device names (desktop).** Name each install in **Settings → This device**,
+  and prompts it edits are stamped with that name — a prompt&rsquo;s details show
+  **Last edited on <device>**. The stamp travels through sync, so you can tell
+  which machine last touched a prompt. Empty name records nothing.
+- **One-command server install.** A new `install.sh` stands up the sync server
+  from the prebuilt image with a generated token and a persistent volume in one
+  line (`curl -fsSL …/install.sh | sh`); re-running updates in place. Plus a
+  ready-to-paste **Portainer / Unraid** stack in the self-hosting docs. (The
+  daily volume-backup sidecar already ships commented in `docker-compose.yml`.)
 - **Templates.** Mark any entry as a **template** (a checkbox in the editor) and
   it becomes a starting point in a new dropdown beside **New Prompt/Snippet**.
   Picking one opens the editor pre-filled with the template's content as a brand

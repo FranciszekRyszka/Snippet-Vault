@@ -19,6 +19,8 @@ export type Snippet = {
   color: string;
   // Whether this entry is a reusable template offered in the New dialog.
   template: boolean;
+  // Friendly name of the device that last wrote this row ("" = unknown).
+  last_device: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -517,6 +519,27 @@ export async function setBackupSettings(
   keep?: number
 ): Promise<void> {
   await invoke("set_backup_settings", { autoBackup, keep: keep ?? null });
+}
+
+// Trash auto-purge retention, in days (0 = off/keep forever). Desktop-only.
+export async function getTrashRetentionDays(): Promise<number> {
+  if (!isTauri()) return 0;
+  return invoke<number>("get_trash_retention_days");
+}
+
+export async function setTrashRetentionDays(days: number): Promise<void> {
+  await invoke("set_trash_retention_days", { days });
+}
+
+// This install's device name, stamped onto rows it writes ("" = unset).
+// Desktop-only (the web app has no device identity).
+export async function getDeviceName(): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("get_device_name");
+}
+
+export async function setDeviceName(name: string): Promise<void> {
+  await invoke("set_device_name", { name });
 }
 
 // ---- Quick capture (desktop only) -----------------------------------------

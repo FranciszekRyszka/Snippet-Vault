@@ -44,6 +44,14 @@ struct AppConfig {
     /// built-in default.
     #[serde(default)]
     quick_capture_shortcut: Option<String>,
+    /// Auto-purge Trash: on launch, blank the content of tombstones deleted more
+    /// than this many days ago (keeping the tombstone for sync). 0 = off.
+    #[serde(default)]
+    trash_retention_days: u32,
+    /// A friendly name for this install, stamped onto rows this device writes so
+    /// other devices can see where an edit came from. Empty = unset.
+    #[serde(default)]
+    device_name: String,
 }
 
 // A hand-written Default (rather than derive) so a brand-new install — where
@@ -58,6 +66,8 @@ impl Default for AppConfig {
             backup_keep: 0,
             quick_capture_enabled: true,
             quick_capture_shortcut: None,
+            trash_retention_days: 0,
+            device_name: String::new(),
         }
     }
 }
@@ -120,6 +130,9 @@ fn save_config(cfg: &AppConfig) -> Result<(), String> {
 /// Open a database at `path`, store it in state, and remember the path in config.
 fn set_active_db(state: &State<Mutex<AppState>>, path: &Path) -> Result<String, String> {
     let db = Database::open(path).map_err(|e| e.to_string())?;
+    // Carry the configured device name onto the freshly opened db so writes made
+    // this session are stamped (matches what the startup path does).
+    db.set_device(&load_config().device_name);
     let path_str = path.to_string_lossy().into_owned();
     {
         let mut s = state.lock().map_err(|e| e.to_string())?;
@@ -325,6 +338,52 @@ fn set_backup_settings(auto_backup: bool, keep: Option<u32>) -> Result<(), Strin
         None => cfg.backup_keep,
     };
     save_config(&cfg)
+}
+
+/// The Trash auto-purge retention, in days (0 = off/keep forever).
+#[tauri::command]
+fn get_trash_retention_days() -> u32 {
+    load_config().trash_retention_days
+}
+
+/// Set the Trash auto-purge retention (days; 0 = off). Applies on the next
+/// launch; also runs once now so the change takes effect immediately.
+#[tauri::command]
+fn set_trash_retention_days(
+    state: State<Mutex<AppState>>,
+    days: u32,
+) -> Result<(), String> {
+    let mut cfg = load_config();
+    cfg.trash_retention_days = days;
+    save_config(&cfg)?;
+    if days > 0 {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        if let Some(db) = s.db.as_ref() {
+            let _ = db.purge_deleted_older_than(days as i64);
+        }
+    }
+    Ok(())
+}
+
+/// This install's device name (stamped onto rows it writes; "" = unset).
+#[tauri::command]
+fn get_device_name() -> String {
+    load_config().device_name
+}
+
+/// Set this install's device name. Persists it and applies it to the live
+/// database so subsequent writes are stamped without a restart.
+#[tauri::command]
+fn set_device_name(state: State<Mutex<AppState>>, name: String) -> Result<(), String> {
+    let cleaned: String = name.trim().chars().take(64).collect();
+    let mut cfg = load_config();
+    cfg.device_name = cleaned.clone();
+    save_config(&cfg)?;
+    let s = state.lock().map_err(|e| e.to_string())?;
+    if let Some(db) = s.db.as_ref() {
+        db.set_device(&cleaned);
+    }
+    Ok(())
 }
 
 /// Restore the whole database from a backup file, replacing the current
@@ -762,6 +821,9 @@ pub fn run() {
     if let Some(path) = startup_path {
         if path.exists() {
             if let Ok(db) = Database::open(&path) {
+                // Name this device so local writes are stamped (for the sync
+                // "last edited on…" hint). Empty name → rows keep "" (unknown).
+                db.set_device(&cfg.device_name);
                 // Opt-in launch backup: write one snapshot if enabled and none
                 // was taken in the last day. Best-effort — a backup failure must
                 // never block the app from starting.
@@ -772,6 +834,11 @@ pub fn run() {
                         cfg.backup_keep
                     };
                     let _ = write_snapshot(&db, keep);
+                }
+                // Opt-in Trash auto-purge: blank the content of tombstones older
+                // than the retention window (keeping them for sync). Best-effort.
+                if cfg.trash_retention_days > 0 {
+                    let _ = db.purge_deleted_older_than(cfg.trash_retention_days as i64);
                 }
                 app_state.db = Some(db);
                 // Persist the path if it was only inferred (no config yet),
@@ -891,6 +958,10 @@ pub fn run() {
             backup_to_folder,
             get_backup_settings,
             set_backup_settings,
+            get_trash_retention_days,
+            set_trash_retention_days,
+            get_device_name,
+            set_device_name,
             restore_from_backup,
             open_backups_dir,
             get_remote_config,

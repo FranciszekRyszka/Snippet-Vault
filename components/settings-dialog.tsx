@@ -35,6 +35,10 @@ import {
   removeSyncServer,
   getQuickCaptureSettings,
   setQuickCaptureSettings,
+  getTrashRetentionDays,
+  setTrashRetentionDays,
+  getDeviceName,
+  setDeviceName,
   isTauri,
   type SyncServer,
 } from "@/lib/tauri-api";
@@ -92,6 +96,10 @@ export function SettingsDialog({
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [backupsDir, setBackupsDir] = useState<string | null>(null);
   const [autoBackup, setAutoBackup] = useState(false);
+  // Trash auto-purge retention (days; 0 = off) and this install's device name.
+  const [trashDays, setTrashDays] = useState(0);
+  const [deviceName, setDeviceNameState] = useState("");
+  const [deviceSaved, setDeviceSaved] = useState(true);
   const [busy, setBusy] = useState<
     "change" | "backup" | "folder-backup" | "restore" | null
   >(null);
@@ -136,6 +144,13 @@ export function SettingsDialog({
     getBackupSettings()
       .then((s) => setAutoBackup(s.auto_backup))
       .catch(() => setAutoBackup(false));
+    getTrashRetentionDays().then(setTrashDays).catch(() => setTrashDays(0));
+    getDeviceName()
+      .then((n) => {
+        setDeviceNameState(n);
+        setDeviceSaved(true);
+      })
+      .catch(() => setDeviceNameState(""));
     getAppVersion().then(setVersion).catch(() => setVersion(""));
     setAutoCheck(isAutoUpdateEnabled());
     getQuickCaptureSettings()
@@ -387,6 +402,30 @@ export function SettingsDialog({
       await setBackupSettings(enabled);
     } catch (err) {
       setAutoBackup(!enabled);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const changeTrashDays = async (days: number) => {
+    const prev = trashDays;
+    setTrashDays(days);
+    try {
+      await setTrashRetentionDays(days);
+      // A retention change can purge old tombstones now — reload the lists.
+      onDbChanged();
+    } catch (err) {
+      setTrashDays(prev);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const saveDevice = async () => {
+    const cleaned = deviceName.trim().slice(0, 64);
+    try {
+      await setDeviceName(cleaned);
+      setDeviceNameState(cleaned);
+      setDeviceSaved(true);
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -800,6 +839,64 @@ export function SettingsDialog({
               />
               Automatically back up on launch (at most once a day)
             </label>
+          </div>
+
+          <div className="border-t border-border pt-5">
+            <label className="block text-sm font-medium text-foreground">
+              This device
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              A name for this install, stamped onto prompts it edits so you can
+              tell your devices apart after syncing (shown in a prompt&rsquo;s
+              details). Leave blank to record nothing.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="text"
+                value={deviceName}
+                maxLength={64}
+                placeholder="e.g. Work laptop"
+                onChange={(e) => {
+                  setDeviceNameState(e.target.value);
+                  setDeviceSaved(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveDevice();
+                }}
+                className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={saveDevice}
+                disabled={deviceSaved}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                {deviceSaved ? "Saved" : "Save"}
+              </button>
+            </div>
+
+            <label
+              htmlFor="trash-retention"
+              className="mt-4 block text-sm font-medium text-foreground"
+            >
+              Trash auto-purge
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              On launch, permanently clear the contents of items deleted longer
+              ago than this. The deletion still syncs — only the old content is
+              dropped, so it can&rsquo;t be recovered afterward.
+            </p>
+            <select
+              id="trash-retention"
+              value={trashDays}
+              onChange={(e) => changeTrashDays(Number(e.target.value))}
+              className="mt-2 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value={0}>Off — keep deleted items forever</option>
+              <option value={7}>Clear after 7 days</option>
+              <option value={30}>Clear after 30 days</option>
+              <option value={90}>Clear after 90 days</option>
+            </select>
           </div>
 
           <div className="border-t border-border pt-5">
