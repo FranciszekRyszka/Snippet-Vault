@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SnipVault — local-first vault for AI prompts &amp; code snippets</title>
+  <meta name="description" content="Save, organize, and reuse your best AI prompts and code snippets. Fill-in variables, versioned history, instant search, and optional self-hosted sync — local-first and private by default." />
+  <link rel="canonical" href="https://franciszekryszka.github.io/Snippet-Vault/" />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="SnipVault — your prompts and snippets, finally organized" />
+  <meta property="og:description" content="A local-first vault for AI prompts and code snippets. Variables, history, search, self-hosted sync. Free & open source." />
+  <meta property="og:image" content="assets/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Favicon: inline SVG (braces + vault dot), no external request -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238b5cf6'/%3E%3Ctext x='16' y='22' font-size='18' font-family='monospace' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E" />
+
+  <!-- Apply saved theme before paint to avoid a flash -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Structured data: it's a free app -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "SnipVault",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Windows, macOS",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- ===================== NAV ===================== -->
+  <header class="nav" id="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="#top" aria-label="SnipVault home">
+        <span class="brand__glyph" aria-hidden="true">{ }</span>
+        <span class="brand__name">SnipVault</span>
+      </a>
+
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#privacy">Private</a>
+        <a href="#sync">Sync</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">GitHub</a>
+      </nav>
+
+      <div class="nav__actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle light / dark">
+          <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+        <a class="btn btn--primary btn--sm" href="#download">Download</a>
+        <button class="icon-btn nav__burger" id="burger" type="button" aria-label="Menu" aria-expanded="false">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+    <nav class="nav__mobile" id="mobile-menu" aria-label="Mobile">
+      <a href="#features">Features</a>
+      <a href="#privacy">Private</a>
+      <a href="#sync">Sync</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">GitHub</a>
+      <a class="btn btn--primary" href="#download">Download</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <span id="top"></span>
+
+    <!-- ===================== HERO ===================== -->
+    <section class="hero">
+      <div class="wrap hero__inner">
+        <div class="hero__copy reveal">
+          <p class="eyebrow">Local-first · Open source · Free</p>
+          <h1>Your prompts and snippets,<br /><span class="grad">finally organized.</span></h1>
+          <p class="lede">
+            A local-first vault for your AI prompts and code snippets. Fill-in
+            variables, versioned history, instant search, and optional
+            self-hosted sync — all offline, all yours.
+          </p>
+          <div class="hero__cta">
+            <a class="btn btn--primary btn--lg" href="#download" id="hero-download">Download for your OS</a>
+            <a class="btn btn--ghost btn--lg" href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">View on GitHub</a>
+          </div>
+          <ul class="chips" aria-label="Highlights">
+            <li>Local-first</li>
+            <li>No account</li>
+            <li>Works offline</li>
+            <li>MIT licensed</li>
+          </ul>
+        </div>
+
+        <!-- App-window mockup (pure HTML/CSS — swap for a real screenshot later) -->
+        <div class="hero__art reveal" aria-hidden="true">
+          <div class="win">
+            <div class="win__bar">
+              <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+              <div class="win__search">Search prompts…&nbsp; <kbd>⌘K</kbd></div>
+            </div>
+            <div class="win__body">
+              <article class="pcard" style="--c:#8b5cf6">
+                <div class="pcard__title">Blog outline generator</div>
+                <div class="pcard__code">Write a {{topic}} outline in a {{tone}} tone…</div>
+                <div class="pcard__meta"><span class="tag">writing</span><span class="tag tag--model">Claude</span></div>
+              </article>
+              <article class="pcard" style="--c:#22c55e">
+                <div class="pcard__title">SQL: upsert by uuid</div>
+                <div class="pcard__code mono">INSERT INTO … ON CONFLICT(uuid)…</div>
+                <div class="pcard__meta"><span class="tag">sql</span><span class="badge">Code</span></div>
+              </article>
+            </div>
+            <!-- floating fill dialog -->
+            <div class="fill">
+              <div class="fill__head">Fill variables</div>
+              <label class="fill__row"><span class="mono">{{topic}}</span><input value="local-first apps" readonly /></label>
+              <label class="fill__row"><span class="mono">{{tone}}</span>
+                <select><option>playful</option></select>
+              </label>
+              <button class="btn btn--primary btn--sm fill__btn">Copy filled ✦</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PROBLEM → SHIFT ===================== -->
+    <section class="band">
+      <div class="wrap flow reveal">
+        <div class="flow__item"><span class="flow__ico">🗂️</span><p>Prompts scattered across chats, docs, and sticky notes.</p></div>
+        <div class="flow__arrow" aria-hidden="true">→</div>
+        <div class="flow__item"><span class="flow__ico">🔎</span><p>One searchable vault you actually trust.</p></div>
+        <div class="flow__arrow" aria-hidden="true">→</div>
+        <div class="flow__item"><span class="flow__ico">⚡</span><p>Reuse the good ones in a single click.</p></div>
+      </div>
+    </section>
+
+    <!-- ===================== FEATURES ===================== -->
+    <section id="features" class="section">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Features</p>
+          <h2>Built for the way you actually use prompts</h2>
+        </header>
+
+        <!-- Row 1 -->
+        <div class="feat reveal">
+          <div class="feat__text">
+            <h3>Fill-in variables, then copy</h3>
+            <p>
+              Write <code>{{topic}}</code>, a dropdown
+              <code>{{tone:select(formal,playful)}}</code>, a
+              <code>{{when:date}}</code>, even a hint
+              <code>{{topic|what to write about}}</code>. SnipVault asks for the
+              values and hands you the finished prompt — and remembers what you
+              used last time.
+            </p>
+          </div>
+          <div class="feat__art" aria-hidden="true">
+            <div class="panel">
+              <div class="panel__title">Fill variables</div>
+              <div class="frow"><span class="mono">{{topic}}</span><span class="inp">otters</span></div>
+              <div class="frow"><span class="mono">{{tone}}</span><span class="inp inp--sel">playful ▾</span></div>
+              <div class="frow"><span class="mono">{{when}}</span><span class="inp">2026-08-14</span></div>
+              <div class="preview">Write about <b>otters</b> in a <b>playful</b> tone, due <b>2026-08-14</b>.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2 (reversed) -->
+        <div class="feat feat--rev reveal">
+          <div class="feat__text">
+            <h3>A workbench for prompts, not just a notepad</h3>
+            <p>
+              Tag each prompt with its model — Claude, GPT-4o, Midjourney — then
+              <b>Run in…</b> opens it straight in ChatGPT, Claude, or Gemini.
+              Link related prompts with <code>[[Its title]]</code>, mark reusable
+              <b>templates</b>, and color-code your library for fast scanning.
+            </p>
+          </div>
+          <div class="feat__art" aria-hidden="true">
+            <div class="panel">
+              <div class="runrow">Run in <span class="pill">ChatGPT</span><span class="pill">Claude</span><span class="pill">Gemini</span></div>
+              <div class="linkrow">Links to <span class="lnk">Style guide</span> · Referenced by <span class="lnk">Cold email</span></div>
+              <div class="swatches">
+                <span class="sw" style="--c:#ef4444"></span><span class="sw" style="--c:#f59e0b"></span>
+                <span class="sw" style="--c:#22c55e"></span><span class="sw sw--on" style="--c:#8b5cf6"></span>
+                <span class="sw" style="--c:#3b82f6"></span><span class="badge">Template</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3 -->
+        <div class="feat reveal">
+          <div class="feat__text">
+            <h3>Never lose a good version</h3>
+            <p>
+              Every edit is saved to <b>history</b>. Preview any past version,
+              see a line-by-line <b>diff</b> — inline or side-by-side — and
+              restore it in a click. Nothing is ever overwritten for good.
+            </p>
+          </div>
+          <div class="feat__art" aria-hidden="true">
+            <div class="panel panel--diff">
+              <div class="diff diff--del">- a friendly, concise tone</div>
+              <div class="diff diff--add">+ a warm, playful tone</div>
+              <div class="diff">  Keep it under 120 words.</div>
+              <div class="diff diff--add">+ End with a question.</div>
+              <div class="panel__foot"><span class="mut">+2 −1</span> · <span class="mut">restore</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- And much more grid -->
+        <header class="section__head section__head--sm reveal">
+          <h3>…and a lot more</h3>
+        </header>
+        <ul class="grid reveal">
+          <li class="cell"><span class="cell__ico">⌘</span><b>Command palette</b><p>Fuzzy-find and copy anything with Ctrl/⌘-K.</p></li>
+          <li class="cell"><span class="cell__ico">⚡</span><b>Quick capture</b><p>A global hotkey pops up a capture window from any app.</p></li>
+          <li class="cell"><span class="cell__ico">🏷️</span><b>Tags &amp; saved views</b><p>Tag, filter, sort, and save a filter combo for one-click recall.</p></li>
+          <li class="cell"><span class="cell__ico">🔤</span><b>Token estimates</b><p>See a prompt's size at a glance; hidden for code snippets.</p></li>
+          <li class="cell"><span class="cell__ico">🧬</span><b>Duplicate detection</b><p>Spot near-identical prompts and tidy up.</p></li>
+          <li class="cell"><span class="cell__ico">📤</span><b>Import / export</b><p>JSON &amp; Markdown, plus drag-and-drop import.</p></li>
+          <li class="cell"><span class="cell__ico">🎨</span><b>Themes</b><p>Light, dark, and accent colors that stick.</p></li>
+          <li class="cell"><span class="cell__ico">💾</span><b>One-click backups</b><p>Snapshot the whole database, safely, anytime.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== PRIVACY BAND ===================== -->
+    <section id="privacy" class="section section--accent">
+      <div class="wrap privacy reveal">
+        <div class="privacy__copy">
+          <p class="eyebrow">Yours, and private</p>
+          <h2>Local-first. Private by default.</h2>
+          <p class="lede">
+            Your library is a plain SQLite file on your own machine. No account,
+            no cloud, no telemetry. SnipVault works fully offline — and nothing
+            is ever sent anywhere unless <em>you</em> turn on sync.
+          </p>
+        </div>
+        <ul class="privacy__list">
+          <li><b>You own the file.</b> A single <code>snippets.db</code> you can back up, move, or open yourself.</li>
+          <li><b>Open source, MIT.</b> Audit every line on GitHub — no black box.</li>
+          <li><b>Opt-in sync.</b> Self-hosted only; there is no SnipVault cloud.</li>
+          <li><b>Secure by default.</b> Signed auto-updates; sync token kept in your OS keychain.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== SYNC ===================== -->
+    <section id="sync" class="section">
+      <div class="wrap sync reveal">
+        <div class="sync__copy">
+          <p class="eyebrow">Sync — on your terms</p>
+          <h2>Your machines, in step. Without the cloud.</h2>
+          <p class="lede">
+            Run the tiny self-hosted server and your devices reconcile two-way,
+            newest-edit-wins — new prompts, edits, and deletions all flow. Private
+            per-user vaults, token auth, one command to stand it up.
+          </p>
+          <ul class="ticks">
+            <li>Two-way incremental sync (offline-friendly)</li>
+            <li>Multi-user private vaults on one server</li>
+            <li>Docker, or bare Node — you choose</li>
+          </ul>
+        </div>
+        <div class="sync__code">
+          <div class="term">
+            <div class="term__bar">
+              <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+              <span class="term__title">install the server</span>
+              <button class="term__copy" id="copy-install" type="button" aria-label="Copy command">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span class="term__copy-label">Copy</span>
+              </button>
+            </div>
+            <div class="term__body">
+              <code id="install-cmd" class="term__cmd">curl -fsSL https://raw.githubusercontent.com/FranciszekRyszka/Snippet-Vault/main/install.sh | sh</code>
+              <span class="term__out" aria-hidden="true">SnipVault is up.
+  URL:   http://192.168.1.50:3000
+  Token: ••••••••••••••••••••••</span>
+            </div>
+          </div>
+          <p class="mut small">Prefer a NAS? A ready-to-paste Portainer / Unraid stack is in the <a href="https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Syncing" rel="noopener">self-hosting docs</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DOWNLOAD ===================== -->
+    <section id="download" class="section section--muted">
+      <div class="wrap dl reveal">
+        <header class="section__head">
+          <p class="eyebrow">Get SnipVault</p>
+          <h2>Download the desktop app</h2>
+          <p class="lede center">Free and open source. Grab an installer for your platform.</p>
+        </header>
+        <div class="dl__os">
+          <a class="oscard" id="os-win" href="https://github.com/FranciszekRyszka/Snippet-Vault/releases/latest" rel="noopener">
+            <span class="oscard__ico">🪟</span><b>Windows</b><span class="mut small">.exe / .msi</span>
+          </a>
+          <a class="oscard" id="os-mac" href="https://github.com/FranciszekRyszka/Snippet-Vault/releases/latest" rel="noopener">
+            <span class="oscard__ico">🍎</span><b>macOS</b><span class="mut small">Apple Silicon &amp; Intel</span>
+          </a>
+        </div>
+        <p class="mut small center">
+          Signed auto-updates keep you current · See <a href="https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Installation" rel="noopener">install notes</a>.<br />
+          On Linux? Run the web app or <a href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">build from source</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section id="faq" class="section">
+      <div class="wrap faq reveal">
+        <header class="section__head"><p class="eyebrow">FAQ</p><h2>Good questions</h2></header>
+        <div class="acc">
+          <details><summary>Is it free?</summary><p>Yes — SnipVault is open source under the MIT license. No paid tiers, no upsell.</p></details>
+          <details><summary>Where is my data stored?</summary><p>In a local SQLite file on your machine. Nothing leaves your device unless you set up your own sync server.</p></details>
+          <details><summary>Do I need an account?</summary><p>No. There's no sign-up and no SnipVault cloud.</p></details>
+          <details><summary>How does syncing work?</summary><p>You run a small self-hosted server (Docker or Node). Devices sync two-way and the most recent edit wins per prompt. It's optional.</p></details>
+          <details><summary>Which platforms are supported?</summary><p>Desktop apps for Windows and macOS (Apple Silicon &amp; Intel). On Linux you can run the web app or build from source.</p></details>
+          <details><summary>Is it only for AI prompts?</summary><p>It's just as good for code snippets — mark each entry's kind; the token estimate hides for code.</p></details>
+          <details><summary>Can I import my existing prompts?</summary><p>Yes — JSON, <code>.md</code>, and <code>.txt</code>, including drag-and-drop and multi-file import.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FINAL CTA ===================== -->
+    <section class="section section--cta">
+      <div class="wrap cta reveal">
+        <h2>Start your vault.</h2>
+        <p class="lede center">Free, open source, and yours.</p>
+        <div class="hero__cta hero__cta--center">
+          <a class="btn btn--primary btn--lg" href="https://github.com/FranciszekRyszka/Snippet-Vault/releases/latest" rel="noopener">Download SnipVault</a>
+          <a class="btn btn--ghost btn--lg" href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <div class="footer__brand">
+        <a class="brand" href="#top"><span class="brand__glyph" aria-hidden="true">{ }</span><span class="brand__name">SnipVault</span></a>
+        <p class="mut small">A local-first vault for AI prompts &amp; code snippets.</p>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div>
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#download">Download</a>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+        </div>
+        <div>
+          <h4>Docs</h4>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/wiki/User-Guide" rel="noopener">User Guide</a>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/wiki/Syncing" rel="noopener">Syncing</a>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/blob/main/docs/self-hosting.md" rel="noopener">Self-hosting</a>
+        </div>
+        <div>
+          <h4>Project</h4>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault" rel="noopener">GitHub</a>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/issues" rel="noopener">Issues</a>
+          <a href="https://github.com/FranciszekRyszka/Snippet-Vault/releases" rel="noopener">Releases</a>
+        </div>
+      </nav>
+    </div>
+    <div class="wrap footer__base">
+      <span class="mut small">© <span id="year">2026</span> SnipVault · MIT licensed</span>
+      <span class="mut small">Not affiliated with OpenAI, Anthropic, or Google.</span>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
