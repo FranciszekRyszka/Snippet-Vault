@@ -76,6 +76,7 @@ export function exportSnippet(snippet: Snippet): string | null {
       color: snippet.color || "",
       template: snippet.template || false,
       collection: snippet.collection || "",
+      icon: snippet.icon || "",
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -362,6 +363,7 @@ export function SnippetCard({
               className="min-w-0 flex-1 text-left"
             >
               <h3 className="truncate text-sm font-semibold text-foreground">
+                {snippet.icon && <span className="mr-1">{snippet.icon}</span>}
                 {snippet.title}
               </h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -448,6 +450,7 @@ export function SnippetCard({
             onClick={() => onOpen(snippet)}
             className="block max-w-full truncate text-left text-base font-semibold text-foreground hover:underline"
           >
+            {snippet.icon && <span className="mr-1">{snippet.icon}</span>}
             {snippet.title}
           </button>
           {snippet.description && (

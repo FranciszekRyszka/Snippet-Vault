@@ -36,6 +36,11 @@ struct AppConfig {
     /// How many snapshots to keep when pruning. 0 means "unset" → the default.
     #[serde(default)]
     backup_keep: u32,
+    /// Minimum days between launch auto-backups. 0 = every launch; 1 = at most
+    /// once a day (the original behaviour), 7 = weekly, etc. Only consulted when
+    /// `auto_backup` is on.
+    #[serde(default = "default_backup_interval")]
+    backup_interval_days: u32,
     /// Whether the global quick-capture hotkey + tray shortcut are active. On by
     /// default (also for configs written before this field existed).
     #[serde(default = "default_true")]
@@ -52,6 +57,13 @@ struct AppConfig {
     /// other devices can see where an edit came from. Empty = unset.
     #[serde(default)]
     device_name: String,
+    /// Optional AI assistant (BYO key). Base URL of an OpenAI-compatible chat
+    /// completions API and the model name. Empty = use the built-in defaults. The
+    /// API key itself lives in the OS keyring, never in this file.
+    #[serde(default)]
+    ai_base_url: String,
+    #[serde(default)]
+    ai_model: String,
 }
 
 // A hand-written Default (rather than derive) so a brand-new install — where
@@ -64,13 +76,22 @@ impl Default for AppConfig {
             remote: None,
             auto_backup: false,
             backup_keep: 0,
+            backup_interval_days: 1,
             quick_capture_enabled: true,
             quick_capture_shortcut: None,
             trash_retention_days: 0,
             device_name: String::new(),
+            ai_base_url: String::new(),
+            ai_model: String::new(),
         }
     }
 }
+
+/// Defaults for the optional AI assistant when the user hasn't overridden them.
+/// An OpenAI-compatible endpoint, so it also works with local servers
+/// (Ollama/LM Studio) and proxies by just changing the base URL.
+const DEFAULT_AI_BASE_URL: &str = "https://api.openai.com/v1";
+const DEFAULT_AI_MODEL: &str = "gpt-4o-mini";
 
 fn default_true() -> bool {
     true
@@ -79,6 +100,12 @@ fn default_true() -> bool {
 /// Default number of rotating snapshots to keep.
 fn default_backup_keep() -> u32 {
     10
+}
+
+/// Default minimum days between launch auto-backups (once a day) — matches the
+/// original hard-coded 24h behaviour for configs written before this field.
+fn default_backup_interval() -> u32 {
+    1
 }
 
 /// The built-in quick-capture hotkey when the user hasn't chosen one.
@@ -228,11 +255,17 @@ fn backup_timestamp() -> String {
 
 /// Whether a snapshot was written in the last 24 hours — used to throttle the
 /// opt-in launch backup to at most once a day.
-fn backed_up_within_24h(dir: &Path) -> bool {
+/// Whether a snapshot was written within the last `days` days. `days == 0` means
+/// "no minimum interval" → always returns false so a backup is taken every launch.
+fn backed_up_within_days(dir: &Path, days: u32) -> bool {
+    if days == 0 {
+        return false;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
     let now = std::time::SystemTime::now();
+    let window = (days as u64) * 24 * 3600;
     entries.flatten().any(|e| {
         let is_snapshot = e
             .file_name()
@@ -245,7 +278,7 @@ fn backed_up_within_24h(dir: &Path) -> bool {
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| now.duration_since(t).ok())
-                .map(|age| age.as_secs() < 24 * 3600)
+                .map(|age| age.as_secs() < window)
                 .unwrap_or(false)
     })
 }
@@ -312,6 +345,7 @@ fn backup_to_folder(state: State<Mutex<AppState>>, keep: Option<u32>) -> Result<
 struct BackupSettings {
     auto_backup: bool,
     keep: u32,
+    interval_days: u32,
 }
 
 #[tauri::command]
@@ -324,12 +358,18 @@ fn get_backup_settings() -> BackupSettings {
         } else {
             cfg.backup_keep
         },
+        interval_days: cfg.backup_interval_days,
     }
 }
 
-/// Enable/disable the launch auto-backup and set how many snapshots to keep.
+/// Enable/disable the launch auto-backup, set how many snapshots to keep, and how
+/// often to take one (`interval_days`: 0 = every launch, 1 = daily, 7 = weekly…).
 #[tauri::command]
-fn set_backup_settings(auto_backup: bool, keep: Option<u32>) -> Result<(), String> {
+fn set_backup_settings(
+    auto_backup: bool,
+    keep: Option<u32>,
+    interval_days: Option<u32>,
+) -> Result<(), String> {
     let mut cfg = load_config();
     cfg.auto_backup = auto_backup;
     cfg.backup_keep = match keep {
@@ -337,6 +377,9 @@ fn set_backup_settings(auto_backup: bool, keep: Option<u32>) -> Result<(), Strin
         None if cfg.backup_keep == 0 => default_backup_keep(),
         None => cfg.backup_keep,
     };
+    if let Some(d) = interval_days {
+        cfg.backup_interval_days = d;
+    }
     save_config(&cfg)
 }
 
@@ -466,6 +509,91 @@ fn delete_token_from_keyring() {
         // Ignore "nothing to delete"; the goal is just that no token remains.
         let _ = entry.delete_credential();
     }
+}
+
+// The AI assistant's API key lives in the OS keyring too (never in config.json),
+// under its own account so it's independent of the sync token.
+const AI_KEYRING_ACCOUNT: &str = "ai-key";
+
+fn ai_keyring_entry() -> Option<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, AI_KEYRING_ACCOUNT).ok()
+}
+
+fn store_ai_key_in_keyring(key: &str) -> bool {
+    ai_keyring_entry()
+        .map(|e| e.set_password(key).is_ok())
+        .unwrap_or(false)
+}
+
+fn read_ai_key_from_keyring() -> Option<String> {
+    ai_keyring_entry().and_then(|e| e.get_password().ok())
+}
+
+fn delete_ai_key_from_keyring() {
+    if let Some(entry) = ai_keyring_entry() {
+        let _ = entry.delete_credential();
+    }
+}
+
+/// AI assistant settings for the UI. Never returns the key itself — only whether
+/// one is set — so the key stays in the keyring.
+#[derive(Serialize)]
+struct AiSettings {
+    base_url: String,
+    model: String,
+    has_key: bool,
+}
+
+#[tauri::command]
+fn get_ai_settings() -> AiSettings {
+    let cfg = load_config();
+    AiSettings {
+        base_url: if cfg.ai_base_url.is_empty() {
+            DEFAULT_AI_BASE_URL.to_string()
+        } else {
+            cfg.ai_base_url
+        },
+        model: if cfg.ai_model.is_empty() {
+            DEFAULT_AI_MODEL.to_string()
+        } else {
+            cfg.ai_model
+        },
+        has_key: read_ai_key_from_keyring()
+            .map(|k| !k.is_empty())
+            .unwrap_or(false),
+    }
+}
+
+/// Save the AI endpoint/model, and the key (to the keyring). `api_key = None`
+/// leaves the stored key unchanged (so saving url/model doesn't wipe it); an
+/// empty string clears it.
+#[tauri::command]
+fn set_ai_settings(
+    base_url: String,
+    model: String,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    let mut cfg = load_config();
+    cfg.ai_base_url = base_url.trim().trim_end_matches('/').to_string();
+    cfg.ai_model = model.trim().to_string();
+    save_config(&cfg)?;
+    if let Some(key) = api_key {
+        let key = key.trim();
+        if key.is_empty() {
+            delete_ai_key_from_keyring();
+        } else {
+            store_ai_key_in_keyring(key);
+        }
+    }
+    Ok(())
+}
+
+/// Return the stored AI key to the (trusted) app webview so it can call the
+/// configured endpoint directly through the Tauri HTTP plugin (which bypasses
+/// browser CORS). Empty string when none is set.
+#[tauri::command]
+fn get_ai_key() -> String {
+    read_ai_key_from_keyring().unwrap_or_default()
 }
 
 /// Return the saved sync server, if the app is configured to use one. The
@@ -648,10 +776,23 @@ fn get_all_for_sync(state: State<Mutex<AppState>>) -> Result<Vec<SyncRecord>, St
     db.get_all_for_sync().map_err(|e| e.to_string())
 }
 
+/// How a sync-apply turned out: how many local rows changed, and how many of
+/// those overwrote a diverging local edit (a conflict), whose prior version was
+/// saved to history so nothing is lost.
+#[derive(Serialize)]
+struct ApplyResult {
+    applied: i64,
+    conflicts: i64,
+}
+
 /// Merge the server's records back into the local library (newest edit wins).
-/// Returns how many local rows were inserted or updated.
+/// Returns how many local rows were inserted or updated, and how many conflicts
+/// were preserved to history.
 #[tauri::command]
-fn apply_sync_records(state: State<Mutex<AppState>>, records: Vec<SyncRecord>) -> Result<i64, String> {
+fn apply_sync_records(
+    state: State<Mutex<AppState>>,
+    records: Vec<SyncRecord>,
+) -> Result<ApplyResult, String> {
     // Clamp every record the server hands back before it touches the local DB,
     // mirroring the server's own ingress normalization. A hostile/MITM'd server
     // is otherwise trusted here, so this bounds field sizes and rejects bogus
@@ -662,7 +803,8 @@ fn apply_sync_records(state: State<Mutex<AppState>>, records: Vec<SyncRecord>) -
         .collect();
     let state = state.lock().map_err(|e| e.to_string())?;
     let db = state.db.as_ref().ok_or("Database not initialized")?;
-    db.apply_sync_records(records).map_err(|e| e.to_string())
+    let (applied, conflicts) = db.apply_sync_records(records).map_err(|e| e.to_string())?;
+    Ok(ApplyResult { applied, conflicts })
 }
 
 // ---- Quick capture: tray, global hotkey, and the pop-up window ------------
@@ -825,9 +967,12 @@ pub fn run() {
                 // "last edited on…" hint). Empty name → rows keep "" (unknown).
                 db.set_device(&cfg.device_name);
                 // Opt-in launch backup: write one snapshot if enabled and none
-                // was taken in the last day. Best-effort — a backup failure must
+                // was taken within the configured interval (0 = every launch,
+                // 1 = daily, 7 = weekly…). Best-effort — a backup failure must
                 // never block the app from starting.
-                if cfg.auto_backup && !backed_up_within_24h(&backups_dir()) {
+                if cfg.auto_backup
+                    && !backed_up_within_days(&backups_dir(), cfg.backup_interval_days)
+                {
                     let keep = if cfg.backup_keep == 0 {
                         default_backup_keep()
                     } else {
@@ -962,6 +1107,9 @@ pub fn run() {
             set_trash_retention_days,
             get_device_name,
             set_device_name,
+            get_ai_settings,
+            set_ai_settings,
+            get_ai_key,
             restore_from_backup,
             open_backups_dir,
             get_remote_config,

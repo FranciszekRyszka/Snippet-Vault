@@ -2,7 +2,7 @@ import { dbForRequest, rowToSnippet, type Snippet } from "@/lib/db";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
-import { escapeLike, sanitizeTags, sanitizeModel, sanitizeKind, sanitizeColor, sanitizeCollection } from "@/lib/api-utils";
+import { escapeLike, sanitizeTags, sanitizeModel, sanitizeKind, sanitizeColor, sanitizeCollection, sanitizeIcon, ftsMatchQuery } from "@/lib/api-utils";
 
 const validLanguages = LANGUAGES.map((l) => l.value);
 
@@ -67,9 +67,16 @@ export async function GET(request: Request) {
         query += " AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')";
         params.push(searchLike, searchLike);
       } else {
-        // "all" mode - search title, description, tags, and model
-        query += " AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\')";
-        params.push(searchLike, searchLike, searchLike, searchLike);
+        // Default ("all") mode: use the FTS5 full-text index (fast, tokenized,
+        // and it also covers the prompt body). A non-empty query with no
+        // searchable tokens matches nothing.
+        const match = ftsMatchQuery(search);
+        if (match === null) {
+          query += " AND 0";
+        } else {
+          query += " AND id IN (SELECT rowid FROM snippets_fts WHERE snippets_fts MATCH ?)";
+          params.push(match);
+        }
       }
     }
 
@@ -96,7 +103,7 @@ export async function POST(request: Request) {
   const db = dbForRequest(request);
   try {
     const body = await request.json();
-    const { title, description, code, language, tags, model, kind, color, template, collection } = body;
+    const { title, description, code, language, tags, model, kind, color, template, collection, icon } = body;
 
     if (!title || !code || !language) {
       return NextResponse.json(
@@ -124,10 +131,11 @@ export async function POST(request: Request) {
     const sanitizedKind = sanitizeKind(kind);
     const sanitizedColor = sanitizeColor(color);
     const sanitizedCollection = sanitizeCollection(collection);
+    const sanitizedIcon = sanitizeIcon(icon);
 
     const stmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, collection)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, collection, icon)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -141,7 +149,8 @@ export async function POST(request: Request) {
       sanitizedKind,
       sanitizedColor,
       template === true ? 1 : 0,
-      sanitizedCollection
+      sanitizedCollection,
+      sanitizedIcon
     );
 
     const newSnippet = db.prepare("SELECT * FROM snippets WHERE id = ?").get(result.lastInsertRowid) as Record<string, unknown>;

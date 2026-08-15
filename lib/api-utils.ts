@@ -66,6 +66,28 @@ export function sanitizeCollection(collection: unknown): string {
   return typeof collection === "string" ? collection.trim().slice(0, 100) : "";
 }
 
+// Normalize a per-prompt icon (an emoji): coerce to a string, trim, cap length.
+// An emoji can be several code units (ZWJ/modifier sequences), so allow a small
+// handful of chars. Mirrors the desktop's normalize_icon.
+export function sanitizeIcon(icon: unknown): string {
+  return typeof icon === "string" ? icon.trim().slice(0, 16) : "";
+}
+
+// Build a safe FTS5 MATCH query from raw user input. Splits on non-alphanumeric
+// runs into tokens, then quotes each as a prefix term (`"tok"*`) joined by spaces
+// (implicit AND). Quoting + the alphanumeric-only split means no FTS5 query-syntax
+// character can reach the parser, so a hostile string can't cause a syntax error
+// or change the query shape. Returns null when there are no searchable tokens, so
+// the caller can treat a non-empty search with no tokens as "matches nothing".
+// Mirrors the desktop `fts_match_query` in src-tauri/src/db.rs.
+export function ftsMatchQuery(s: string): string | null {
+  const terms = s
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map((t) => `"${t}"*`);
+  return terms.length ? terms.join(" ") : null;
+}
+
 // Parse a route `id` segment as a non-negative integer, or return null. Guards
 // against parseInt's lax coercion, where "1e2" -> 1 and "7abc" -> 7 would
 // otherwise target the wrong row.

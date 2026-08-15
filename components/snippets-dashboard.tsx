@@ -49,6 +49,8 @@ import { runSync, isSyncing } from "@/hooks/use-sync";
 import { getAutoSyncMinutes } from "@/lib/auto-sync";
 import { normalizeForDup } from "@/lib/duplicates";
 import { isChatGPTExport, parseChatGPTExport } from "@/lib/import-chatgpt";
+import { isClaudeExport, parseClaudeExport } from "@/lib/import-claude";
+import { isGeminiExport, parseGeminiExport } from "@/lib/import-gemini";
 import { LANGUAGES } from "@/lib/languages";
 import { ArrowDownUp, Cpu, Folder, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
 
@@ -276,13 +278,24 @@ export function SnippetsDashboard() {
   // the indicator, and the local library keeps working offline.
   const runSyncAndReload = useCallback(async () => {
     try {
-      await runSync();
+      const result = await runSync();
       fetchSnippets();
       fetchAllSnippets();
+      // Conflict visibility: newest-wins overwrote a locally-edited prompt with a
+      // newer version from another device. The overwritten version was saved to
+      // that prompt's History, so tell the user where to find it.
+      if (result.conflicts > 0) {
+        const n = result.conflicts;
+        showNotice(
+          n === 1
+            ? "1 prompt was updated from another device — your previous version is saved to its History."
+            : `${n} prompts were updated from another device — your previous versions are saved to their History.`
+        );
+      }
     } catch {
       // Offline or server error — the indicator shows the failed state.
     }
-  }, [fetchSnippets, fetchAllSnippets]);
+  }, [fetchSnippets, fetchAllSnippets, showNotice]);
 
   // Decide whether the app is ready to load snippets. The app is always
   // local-first, so this is just the desktop first-run check (the browser
@@ -474,6 +487,7 @@ export function SnippetsDashboard() {
     color: string;
     template: boolean;
     collection: string;
+    icon: string;
   }) => {
     setSaving(true);
     try {
@@ -542,11 +556,12 @@ export function SnippetsDashboard() {
         tags: rev.tags,
         model: rev.model,
         kind: rev.kind,
-        // Color/template/collection are metadata, not part of version history —
-        // keep the current values.
+        // Color/template/collection/icon are metadata, not part of version
+        // history — keep the current values.
         color: snip.color || "",
         template: snip.template,
         collection: snip.collection || "",
+        icon: snip.icon || "",
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -578,6 +593,7 @@ export function SnippetsDashboard() {
         color: snip.color,
         template: snip.template,
         collection: snip.collection,
+        icon: snip.icon,
       });
       setDetailId(null);
       await fetchSnippets();
@@ -646,6 +662,7 @@ export function SnippetsDashboard() {
         color,
         template: snippet.template,
         collection: snippet.collection || "",
+        icon: snippet.icon || "",
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -775,6 +792,7 @@ export function SnippetsDashboard() {
           color: s.color || "",
           template: s.template,
           collection: s.collection || "",
+          icon: s.icon || "",
         });
       } catch (err) {
         console.error("Bulk set-kind failed for", s.id, err);
@@ -819,6 +837,7 @@ export function SnippetsDashboard() {
           color: s.color || "",
           template: s.template,
           collection: s.collection || "",
+          icon: s.icon || "",
         });
       } catch (err) {
         console.error("Bulk add-tag failed for", s.id, err);
@@ -851,6 +870,7 @@ export function SnippetsDashboard() {
         color: s.color || "",
         template: s.template || false,
         collection: s.collection || "",
+        icon: s.icon || "",
       }));
       const filename = `snipvault-selection-${new Date()
         .toISOString()
@@ -1064,11 +1084,13 @@ export function SnippetsDashboard() {
           const applied = await importLibrary(parsed);
           return { imported: 0, skipped: 0, libraryApplied: applied, duplicates: 0 };
         }
-        // ChatGPT data export (conversations.json): one prompt per conversation
-        // (its first user message), grouped into a "ChatGPT" collection and
-        // tagged so the import is easy to find and tidy up afterwards.
-        if (isChatGPTExport(parsed)) {
-          const prompts = parseChatGPTExport(parsed);
+        // AI chat exports (ChatGPT / Claude / Gemini): one prompt per
+        // conversation/prompt, grouped into a per-source collection and tagged so
+        // the import is easy to find and tidy up afterwards.
+        const importAiExport = async (
+          prompts: { title: string; body: string }[],
+          meta: { tag: string; collection: string; icon: string }
+        ) => {
           let imported = 0;
           let skipped = 0;
           let duplicates = 0;
@@ -1079,10 +1101,11 @@ export function SnippetsDashboard() {
                 description: "",
                 code: p.body,
                 language: "text",
-                tags: ["chatgpt"],
+                tags: [meta.tag],
                 model: "",
                 kind: "prompt",
-                collection: "ChatGPT",
+                collection: meta.collection,
+                icon: meta.icon,
               });
               imported++;
               const norm = normalizeForDup(p.body);
@@ -1091,11 +1114,33 @@ export function SnippetsDashboard() {
                 existingBodies.add(norm);
               }
             } catch (convoErr) {
-              console.error("Failed to import a ChatGPT conversation:", convoErr);
+              console.error("Failed to import an AI-export prompt:", convoErr);
               skipped++;
             }
           }
           return { imported, skipped, libraryApplied: 0, duplicates };
+        };
+
+        if (isChatGPTExport(parsed)) {
+          return importAiExport(parseChatGPTExport(parsed), {
+            tag: "chatgpt",
+            collection: "ChatGPT",
+            icon: "💬",
+          });
+        }
+        if (isClaudeExport(parsed)) {
+          return importAiExport(parseClaudeExport(parsed), {
+            tag: "claude",
+            collection: "Claude",
+            icon: "🅰️",
+          });
+        }
+        if (isGeminiExport(parsed)) {
+          return importAiExport(parseGeminiExport(parsed), {
+            tag: "gemini",
+            collection: "Gemini",
+            icon: "✦",
+          });
         }
         const items = Array.isArray(parsed) ? parsed : [parsed];
         const validLanguages = new Set(LANGUAGES.map((l) => l.value));
@@ -1137,6 +1182,7 @@ export function SnippetsDashboard() {
             template: item.template === true,
             collection:
               typeof item.collection === "string" ? item.collection : "",
+            icon: typeof item.icon === "string" ? item.icon : "",
           };
           try {
             await createSnippet(input);
@@ -1439,7 +1485,8 @@ export function SnippetsDashboard() {
               Drop to import
             </p>
             <p className="text-xs text-muted-foreground">
-              JSON exports merge by id · ChatGPT export · .md / .txt become prompts
+              JSON exports merge by id · ChatGPT / Claude / Gemini exports · .md /
+              .txt become prompts
             </p>
           </div>
         </div>

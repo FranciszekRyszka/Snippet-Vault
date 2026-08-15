@@ -241,6 +241,15 @@ export function proxy(request: NextRequest) {
     return TOKEN || MULTI_USER ? serverStatusPage() : NextResponse.next();
   }
 
+  // Public, token-free version probe. Answered before the auth + locked-out
+  // gates (so it works even on a misconfigured server, which is exactly when you
+  // want to diagnose it). It exposes only the software version, never vault
+  // data. Strip any inbound user header so it can't be spoofed even though the
+  // route ignores it.
+  if (request.nextUrl.pathname === "/api/version") {
+    return passThrough(request, null);
+  }
+
   // Misconfigured production server (no auth, no opt-in): fail closed.
   if (LOCKED_OUT) {
     return NextResponse.json(

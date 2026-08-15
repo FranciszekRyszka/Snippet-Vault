@@ -3,11 +3,26 @@
 import React from "react";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import { X } from "lucide-react";
+
+// The CodeMirror editor is client-only and heavy; load it lazily and never on
+// the server (the app is a static export). Used for code snippets only.
+const CodeEditor = dynamic(
+  () => import("./code-editor").then((m) => m.CodeEditor),
+  { ssr: false }
+);
 import { LANGUAGES } from "@/lib/languages";
 import { MODEL_SUGGESTIONS } from "@/lib/models";
 import { getPromptStats, formatCount, showTokenEstimate } from "@/lib/prompt-stats";
 import { PROMPT_COLORS } from "@/lib/prompt-colors";
+import { Sparkles, Loader2 } from "lucide-react";
+import {
+  isAiConfigured,
+  improvePrompt,
+  suggestTitle,
+  suggestTags,
+} from "@/lib/ai";
 import type { Snippet, SnippetKind } from "@/lib/tauri-api";
 
 type SnippetFormProps = {
@@ -23,6 +38,7 @@ type SnippetFormProps = {
     color: string;
     template: boolean;
     collection: string;
+    icon: string;
   }) => void;
   onCancel: () => void;
   saving: boolean;
@@ -53,13 +69,60 @@ export function SnippetForm({
   const [color, setColor] = useState<string>("");
   const [template, setTemplate] = useState(false);
   const [collection, setCollection] = useState<string>("");
+  const [icon, setIcon] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  // Opt-in AI assistant (desktop + a key configured). `aiBusy` names the running
+  // action so its button shows a spinner; `aiError` surfaces failures inline.
+  const [aiReady, setAiReady] = useState(false);
+  const [aiBusy, setAiBusy] = useState<null | "improve" | "title" | "tags">(null);
+  const [aiError, setAiError] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const suggestionBlurTimeout = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+
+  // Whether the AI assistant is usable (checked once on mount).
+  useEffect(() => {
+    let alive = true;
+    isAiConfigured()
+      .then((ok) => alive && setAiReady(ok))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Run an AI action against the current body and apply the result. Errors show
+  // inline; a running action disables the others.
+  const runAi = async (action: "improve" | "title" | "tags") => {
+    if (aiBusy) return;
+    if (!code.trim()) {
+      setAiError("Write a prompt first.");
+      return;
+    }
+    setAiBusy(action);
+    setAiError("");
+    try {
+      if (action === "improve") setCode(await improvePrompt(code));
+      else if (action === "title") setTitle(await suggestTitle(code));
+      else {
+        const suggested = await suggestTags(code);
+        setTags((prev) => {
+          const merged = [...prev];
+          for (const t of suggested) {
+            if (merged.length < 20 && !merged.includes(t)) merged.push(t);
+          }
+          return merged;
+        });
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "The AI request failed.");
+    } finally {
+      setAiBusy(null);
+    }
+  };
 
   // Existing tags that match what's being typed and aren't already added
   const suggestions = useMemo(() => {
@@ -81,6 +144,7 @@ export function SnippetForm({
       setColor(snippet.color || "");
       setTemplate(snippet.template || false);
       setCollection(snippet.collection || "");
+      setIcon(snippet.icon || "");
       setTags(snippet.tags || []);
     } else {
       setTitle("");
@@ -92,6 +156,7 @@ export function SnippetForm({
       setColor("");
       setTemplate(false);
       setCollection("");
+      setIcon("");
       setTags([]);
     }
     setTagInput("");
@@ -172,6 +237,7 @@ export function SnippetForm({
       color,
       template,
       collection: collection.trim(),
+      icon: icon.trim(),
     });
   };
 
@@ -263,6 +329,54 @@ export function SnippetForm({
                   }`}
                 />
               ))}
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="snippet-icon"
+              className="mb-1.5 block text-sm font-medium text-foreground"
+            >
+              Icon{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional emoji, shown before the title)
+              </span>
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input
+                id="snippet-icon"
+                type="text"
+                value={icon}
+                onChange={(e) => setIcon(e.target.value.slice(0, 16))}
+                maxLength={16}
+                placeholder="🙂"
+                className="h-9 w-16 rounded-lg border border-input bg-background px-3 text-center text-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {["🚀", "🐛", "✨", "📝", "⚙️", "🎨", "🔑", "💡"].map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setIcon(e)}
+                  aria-label={`Use ${e}`}
+                  aria-pressed={icon === e}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition-colors hover:bg-accent ${
+                    icon === e ? "border-ring ring-2 ring-ring" : "border-input"
+                  }`}
+                >
+                  {e}
+                </button>
+              ))}
+              {icon && (
+                <button
+                  type="button"
+                  onClick={() => setIcon("")}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-input text-muted-foreground transition-colors hover:bg-accent"
+                  aria-label="No icon"
+                  title="No icon"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -500,19 +614,58 @@ export function SnippetForm({
                 </span>
               )}
             </div>
-            <textarea
-              id="snippet-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder={
-                kind === "code"
-                  ? "Write or paste your code snippet here..."
-                  : "Write or paste your prompt here..."
-              }
-              required
-              rows={12}
-              className="w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+
+            {/* Opt-in AI assistant (desktop + a key configured). Prompt-only. */}
+            {kind !== "code" && aiReady && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                {(
+                  [
+                    { key: "improve", label: "Improve" },
+                    { key: "title", label: "Suggest title" },
+                    { key: "tags", label: "Suggest tags" },
+                  ] as const
+                ).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => runAi(key)}
+                    disabled={aiBusy !== null}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    {aiBusy === key ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3 text-primary" />
+                    )}
+                    {label}
+                  </button>
+                ))}
+                {aiError && (
+                  <span className="text-xs text-destructive">{aiError}</span>
+                )}
+              </div>
+            )}
+            {kind === "code" ? (
+              // Code snippets get the syntax-highlighting CodeMirror editor.
+              <CodeEditor
+                value={code}
+                onChange={setCode}
+                language={language}
+                placeholder="Write or paste your code snippet here..."
+              />
+            ) : (
+              // Prompts keep the plain textarea — better for prose and the
+              // {{variable}} hints below.
+              <textarea
+                id="snippet-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Write or paste your prompt here..."
+                required
+                rows={12}
+                className="w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
             {kind !== "code" && (
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Add fill-in variables with{" "}

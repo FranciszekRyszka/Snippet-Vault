@@ -280,6 +280,7 @@ export function SnippetDetail({
         <div className="flex items-start justify-between gap-3 border-b border-border p-5">
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold text-foreground">
+              {snippet.icon && <span className="mr-1.5">{snippet.icon}</span>}
               {snippet.title}
             </h2>
             {snippet.description && (

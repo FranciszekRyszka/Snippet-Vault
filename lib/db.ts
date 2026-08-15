@@ -106,6 +106,8 @@ function initConnection(conn: Database.Database): void {
   // Collection (folder) label ('' = none) for grouping the library, filtered
   // client-side. DEFAULT '' backfills existing rows.
   addColumn("collection", "collection TEXT NOT NULL DEFAULT ''");
+  // Per-prompt icon (an emoji, '' = none). DEFAULT '' backfills existing rows.
+  addColumn("icon", "icon TEXT NOT NULL DEFAULT ''");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -145,6 +147,37 @@ function initConnection(conn: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_revisions_uuid ON snippet_revisions(snippet_uuid, id);
   `);
+
+  // Full-text search index over the searchable columns (title, description, tags,
+  // model, and the body), kept in sync by triggers on the base table — so every
+  // write path, including the sync merge, maintains it automatically. On first
+  // creation it's built from any existing rows.
+  const ftsExists = conn
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='snippets_fts'")
+    .get();
+  conn.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS snippets_fts USING fts5(
+      title, description, tags, model, code,
+      content='snippets', content_rowid='id'
+    );
+    CREATE TRIGGER IF NOT EXISTS snippets_fts_ai AFTER INSERT ON snippets BEGIN
+      INSERT INTO snippets_fts(rowid, title, description, tags, model, code)
+      VALUES (new.id, new.title, new.description, new.tags, new.model, new.code);
+    END;
+    CREATE TRIGGER IF NOT EXISTS snippets_fts_ad AFTER DELETE ON snippets BEGIN
+      INSERT INTO snippets_fts(snippets_fts, rowid, title, description, tags, model, code)
+      VALUES('delete', old.id, old.title, old.description, old.tags, old.model, old.code);
+    END;
+    CREATE TRIGGER IF NOT EXISTS snippets_fts_au AFTER UPDATE ON snippets BEGIN
+      INSERT INTO snippets_fts(snippets_fts, rowid, title, description, tags, model, code)
+      VALUES('delete', old.id, old.title, old.description, old.tags, old.model, old.code);
+      INSERT INTO snippets_fts(rowid, title, description, tags, model, code)
+      VALUES (new.id, new.title, new.description, new.tags, new.model, new.code);
+    END;
+  `);
+  if (!ftsExists) {
+    conn.exec("INSERT INTO snippets_fts(snippets_fts) VALUES('rebuild')");
+  }
 }
 
 // Open the database on first use rather than at import time. `next build`
@@ -216,6 +249,8 @@ export type Snippet = {
   // Collection (folder) this entry belongs to ("" = none). A single free-form
   // label used to group the library; filtered client-side.
   collection: string;
+  // Short display icon (an emoji, "" = none) shown before the title.
+  icon: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -249,6 +284,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     template: Boolean(row.template),
     last_device: (row.last_device as string) ?? "",
     collection: (row.collection as string) ?? "",
+    icon: (row.icon as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

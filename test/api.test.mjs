@@ -62,6 +62,50 @@ test("rejects a missing/bad token", async () => {
   assert.equal(res.status, 401);
 });
 
+test("full-text search matches the prompt body and tolerates FTS syntax chars", async () => {
+  const created = await create({
+    title: "fts-title-only",
+    code: "peculiarwombat runs quickly",
+  });
+  createdIds.push(created.body.id);
+
+  // Default ("all") search finds it by a body word that isn't in the title.
+  const hit = await api("/api/snippets?search=peculiarwombat", { headers: auth });
+  assert.equal(hit.status, 200);
+  assert.ok(
+    hit.body.some((s) => s.id === created.body.id),
+    "FTS should find the entry by a word in its body"
+  );
+
+  // Prefix matching works too.
+  const pre = await api("/api/snippets?search=peculiar", { headers: auth });
+  assert.ok(pre.body.some((s) => s.id === created.body.id), "prefix match");
+
+  // FTS query-syntax characters must not error (they're neutralized to tokens).
+  const weird = await api(
+    "/api/snippets?search=" + encodeURIComponent('near("a" b):c*'),
+    { headers: auth }
+  );
+  assert.equal(weird.status, 200, "special chars must not 500");
+});
+
+test("/api/version is public (no token) and reports the package version", async () => {
+  // No Authorization header at all — the version probe must answer even on a
+  // token-protected server, unlike every other /api route.
+  const res = await fetch(`${BASE}/api/version`);
+  assert.equal(res.status, 200, "version must be reachable without a token");
+  const body = await res.json();
+  assert.equal(body.name, "snipvault-server");
+  assert.match(body.version, /^\d+\.\d+\.\d+/, "reports a semver version");
+
+  // Sanity: a genuinely protected route still rejects the same tokenless call,
+  // proving /api/version is a deliberate exception, not an open server.
+  if (TOKEN) {
+    const gated = await fetch(`${BASE}/api/snippets`);
+    assert.equal(gated.status, 401);
+  }
+});
+
 test("rate-limits repeated bad-token attempts with a 429", async () => {
   // Only meaningful when the server is token-protected.
   if (!TOKEN) return;
@@ -382,6 +426,51 @@ test("sync inserts a pushed record and echoes the merged set", async () => {
       records: [{ ...mine, deleted: true, updated_at: "2026-08-04 10:00:01" }],
     }),
   });
+});
+
+test("sync overwrite of a diverged edit is counted and preserved to history", async () => {
+  // A prompt exists locally (with its own updated_at).
+  const created = await create({ title: "conflict-me", code: "local edit" });
+  const id = created.body.id;
+  const uuid = created.body.uuid;
+  createdIds.push(id);
+
+  // A newer edit for the same uuid arrives via sync with different content.
+  const { status, body } = await api("/api/sync", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({
+      records: [
+        {
+          uuid,
+          title: "conflict-me",
+          description: "",
+          code: "remote newer edit",
+          language: "text",
+          tags: [],
+          favorite: false,
+          model: "",
+          kind: "prompt",
+          copy_count: 0,
+          last_used_at: null,
+          created_at: "2999-01-01 00:00:00",
+          updated_at: "2999-01-01 00:00:00",
+          deleted: false,
+        },
+      ],
+    }),
+  });
+  assert.equal(status, 200);
+  assert.ok(body.applied >= 1, "the newer edit is applied");
+  assert.ok(body.conflicts >= 1, "the diverging overwrite is counted as a conflict");
+
+  // The overwritten local version is recoverable from the prompt's history.
+  const revs = await api(`/api/snippets/${id}/revisions`, { headers: auth });
+  assert.equal(revs.status, 200);
+  assert.ok(
+    revs.body.some((r) => r.code === "local edit"),
+    "the overwritten local edit is preserved in history"
+  );
 });
 
 test("trash lists soft-deleted rows; restore brings them back", async () => {

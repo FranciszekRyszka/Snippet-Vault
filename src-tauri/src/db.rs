@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// place so every SELECT stays in sync with the row mapper. New columns (`uuid`,
 /// then `kind`) are appended last so the earlier indices stay stable.
 const SNIPPET_COLUMNS: &str =
-    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color, template, last_device, collection";
+    "id, title, description, code, language, tags, favorite, model, copy_count, last_used_at, created_at, updated_at, uuid, kind, color, template, last_device, collection, icon";
 
 /// How many past revisions to keep per snippet. Older ones are pruned on each
 /// new capture so history stays bounded.
@@ -90,6 +90,10 @@ pub struct Snippet {
     /// `favorite` — not part of prompt history.
     #[serde(default)]
     pub collection: String,
+    /// Short display icon (an emoji, "" = none) shown before the title. Metadata
+    /// like `favorite` — not part of prompt history.
+    #[serde(default)]
+    pub icon: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -133,6 +137,8 @@ pub struct CreateSnippetInput {
     pub template: Option<bool>,
     #[serde(default)]
     pub collection: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,6 +157,8 @@ pub struct UpdateSnippetInput {
     pub template: Option<bool>,
     #[serde(default)]
     pub collection: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// One snippet as it travels to/from the sync server: the full record keyed by
@@ -176,6 +184,8 @@ pub struct SyncRecord {
     pub last_device: String,
     #[serde(default)]
     pub collection: String,
+    #[serde(default)]
+    pub icon: String,
     pub copy_count: i64,
     pub last_used_at: Option<String>,
     pub created_at: String,
@@ -213,8 +223,10 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
         template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
         // `last_device` is at index 16. Tolerate NULL → "".
         last_device: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
-        // `collection` is the last column (index 17). Tolerate NULL → "".
+        // `collection` is at index 17. Tolerate NULL → "".
         collection: row.get::<_, Option<String>>(17)?.unwrap_or_default(),
+        // `icon` is the last column (index 18). Tolerate NULL → "".
+        icon: row.get::<_, Option<String>>(18)?.unwrap_or_default(),
         // Read as i64, but fall back to a truncated REAL: SQLite's integer
         // arithmetic can overflow a copy_count into a float, and this column has
         // seen bad writes before. A defensive read keeps one odd row from
@@ -228,12 +240,75 @@ fn row_to_snippet(row: &rusqlite::Row) -> Result<Snippet> {
     })
 }
 
+/// Build a safe FTS5 MATCH query from raw user input. Splits on non-alphanumeric
+/// runs into tokens, then quotes each as a prefix term (`"tok"*`) joined by
+/// spaces (implicit AND). Quoting + the alphanumeric-only split means no FTS5
+/// query-syntax character (`"`, `*`, `:`, `-`, `(`, `NEAR`…) can reach the parser,
+/// so a hostile string can never cause an FTS syntax error or change the query
+/// shape. Returns None when the input has no searchable tokens (e.g. "%%%"), so
+/// the caller can decide that a non-empty search with no tokens matches nothing.
+fn fts_match_query(s: &str) -> Option<String> {
+    let terms: Vec<String> = s
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{}\"*", t))
+        .collect();
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" "))
+    }
+}
+
 pub struct Database {
     conn: Mutex<Connection>,
     path: PathBuf,
     /// This install's friendly name, stamped into `last_device` on local writes.
     /// Set from config after open (empty until then → rows get "" = unknown).
     device: Mutex<String>,
+    /// Whether the FTS5 full-text index is available (it is in the bundled
+    /// SQLite). If creating it ever fails, search falls back to LIKE.
+    fts_enabled: bool,
+}
+
+/// Create the FTS5 index over the searchable columns and the triggers that keep
+/// it in sync with the base table. Because the triggers live on `snippets`, every
+/// write path — create/update/restore/sync-merge/purge — maintains the index for
+/// free. On first creation the index is built from any existing rows. Returns Err
+/// if FTS5 is unavailable in this build, so the caller can fall back to LIKE.
+fn init_fts(conn: &Connection) -> Result<()> {
+    let exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snippets_fts'",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS snippets_fts USING fts5(
+            title, description, tags, model, code,
+            content='snippets', content_rowid='id'
+        );
+        CREATE TRIGGER IF NOT EXISTS snippets_fts_ai AFTER INSERT ON snippets BEGIN
+            INSERT INTO snippets_fts(rowid, title, description, tags, model, code)
+            VALUES (new.id, new.title, new.description, new.tags, new.model, new.code);
+        END;
+        CREATE TRIGGER IF NOT EXISTS snippets_fts_ad AFTER DELETE ON snippets BEGIN
+            INSERT INTO snippets_fts(snippets_fts, rowid, title, description, tags, model, code)
+            VALUES('delete', old.id, old.title, old.description, old.tags, old.model, old.code);
+        END;
+        CREATE TRIGGER IF NOT EXISTS snippets_fts_au AFTER UPDATE ON snippets BEGIN
+            INSERT INTO snippets_fts(snippets_fts, rowid, title, description, tags, model, code)
+            VALUES('delete', old.id, old.title, old.description, old.tags, old.model, old.code);
+            INSERT INTO snippets_fts(rowid, title, description, tags, model, code)
+            VALUES (new.id, new.title, new.description, new.tags, new.model, new.code);
+        END;",
+    )?;
+    if !exists {
+        conn.execute("INSERT INTO snippets_fts(snippets_fts) VALUES('rebuild')", [])?;
+    }
+    Ok(())
 }
 
 impl Database {
@@ -345,6 +420,13 @@ impl Database {
                 [],
             )?;
         }
+        // Per-prompt icon (an emoji, '' = none). DEFAULT '' backfills existing rows.
+        if !existing.contains("icon") {
+            conn.execute(
+                "ALTER TABLE snippets ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
 
         // Sync support: a stable cross-machine identity and a soft-delete
         // tombstone. `uuid` is added nullable, backfilled for existing rows,
@@ -395,10 +477,15 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_revisions_uuid ON snippet_revisions(snippet_uuid, id);",
         )?;
 
+        // Full-text search index (kept in sync by triggers on `snippets`). If the
+        // build lacks FTS5, fall back to LIKE search rather than failing to open.
+        let fts_enabled = init_fts(&conn).is_ok();
+
         Ok(Self {
             conn: Mutex::new(conn),
             path: path.to_path_buf(),
             device: Mutex::new(String::new()),
+            fts_enabled,
         })
     }
 
@@ -484,11 +571,26 @@ impl Database {
                         params_vec.push(Box::new(search_pattern));
                     }
                     _ => {
-                        sql.push_str(" AND (ulower(title) LIKE ? ESCAPE '\\' OR ulower(description) LIKE ? ESCAPE '\\' OR ulower(tags) LIKE ? ESCAPE '\\' OR ulower(model) LIKE ? ESCAPE '\\')");
-                        params_vec.push(Box::new(search_pattern.clone()));
-                        params_vec.push(Box::new(search_pattern.clone()));
-                        params_vec.push(Box::new(search_pattern.clone()));
-                        params_vec.push(Box::new(search_pattern));
+                        // Default ("all") search: use the FTS5 full-text index
+                        // (fast, relevance-tokenized, and it also covers the
+                        // prompt body) when available. A non-empty query with no
+                        // searchable tokens matches nothing. Fall back to a LIKE
+                        // scan over title/description/tags/model if FTS is absent.
+                        if self.fts_enabled {
+                            match fts_match_query(s) {
+                                Some(q) => {
+                                    sql.push_str(" AND id IN (SELECT rowid FROM snippets_fts WHERE snippets_fts MATCH ?)");
+                                    params_vec.push(Box::new(q));
+                                }
+                                None => sql.push_str(" AND 0"),
+                            }
+                        } else {
+                            sql.push_str(" AND (ulower(title) LIKE ? ESCAPE '\\' OR ulower(description) LIKE ? ESCAPE '\\' OR ulower(tags) LIKE ? ESCAPE '\\' OR ulower(model) LIKE ? ESCAPE '\\')");
+                            params_vec.push(Box::new(search_pattern.clone()));
+                            params_vec.push(Box::new(search_pattern.clone()));
+                            params_vec.push(Box::new(search_pattern.clone()));
+                            params_vec.push(Box::new(search_pattern));
+                        }
                     }
                 }
             }
@@ -659,13 +761,14 @@ impl Database {
         let color = input.color.unwrap_or_default();
         let template = input.template.unwrap_or(false) as i64;
         let collection = input.collection.unwrap_or_default();
+        let icon = input.icon.unwrap_or_default();
         let device = self.device_name();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let uuid = uuid::Uuid::new_v4().to_string();
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, last_device, collection, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, collection, now, now],
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, model, kind, color, template, last_device, collection, icon, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![uuid, input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, collection, icon, now, now],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -684,6 +787,7 @@ impl Database {
         let color = input.color.unwrap_or_default();
         let template = input.template.unwrap_or(false) as i64;
         let collection = input.collection.unwrap_or_default();
+        let icon = input.icon.unwrap_or_default();
         let device = self.device_name();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -727,8 +831,8 @@ impl Database {
         }
 
         let rows_affected = conn.execute(
-            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, collection = ?, updated_at = ? WHERE id = ?",
-            params![input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, collection, now, id],
+            "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, collection = ?, icon = ?, updated_at = ? WHERE id = ?",
+            params![input.title, description, input.code, input.language, tags_json, model, kind, color, template, device, collection, icon, now, id],
         )?;
 
         drop(conn);
@@ -861,11 +965,11 @@ impl Database {
         };
 
         conn.execute(
-            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, copy_count, last_used_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, icon, copy_count, last_used_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 uuid, s.title, s.description, s.code, s.language, tags_json,
-                s.favorite as i64, s.model, s.kind, s.color, s.template as i64, device, s.collection, s.copy_count, s.last_used_at, s.created_at, s.updated_at
+                s.favorite as i64, s.model, s.kind, s.color, s.template as i64, device, s.collection, s.icon, s.copy_count, s.last_used_at, s.created_at, s.updated_at
             ],
         )?;
 
@@ -881,7 +985,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uuid, title, description, code, language, tags, favorite, model, \
-             copy_count, last_used_at, created_at, updated_at, deleted, kind, color, template, last_device, collection FROM snippets",
+             copy_count, last_used_at, created_at, updated_at, deleted, kind, color, template, last_device, collection, icon FROM snippets",
         )?;
         let iter = stmt.query_map([], |row| {
             let tags_json: String = row.get(5)?;
@@ -904,6 +1008,7 @@ impl Database {
                 template: row.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
                 last_device: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
                 collection: row.get::<_, Option<String>>(17)?.unwrap_or_default(),
+                icon: row.get::<_, Option<String>>(18)?.unwrap_or_default(),
                 copy_count: row
                     .get::<_, i64>(8)
                     .or_else(|_| row.get::<_, f64>(8).map(|f| f as i64))?,
@@ -923,43 +1028,83 @@ impl Database {
     /// Merge incoming sync records into the local database, newest `updated_at`
     /// winning per uuid (fixed-width UTC timestamps compare correctly as text).
     /// Rows with an unknown uuid are inserted; records without a uuid are
-    /// skipped. Returns how many rows were inserted or updated.
-    pub fn apply_sync_records(&self, records: Vec<SyncRecord>) -> Result<i64> {
+    /// skipped.
+    ///
+    /// Returns `(applied, conflicts)`: `applied` is how many rows were inserted
+    /// or updated; `conflicts` is how many of those updates overwrote a local row
+    /// whose *content had diverged* from the incoming edit — i.e. a real
+    /// conflicting edit made on two devices. Before such an overwrite the local
+    /// version is captured into `snippet_revisions`, so newest-wins never
+    /// silently loses it — it's recoverable from the prompt's History.
+    pub fn apply_sync_records(&self, records: Vec<SyncRecord>) -> Result<(i64, i64)> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
         let mut applied = 0i64;
+        let mut conflicts = 0i64;
         for rec in records {
             if rec.uuid.is_empty() {
                 continue;
             }
             let tags_json =
                 serde_json::to_string(&rec.tags).unwrap_or_else(|_| "[]".to_string());
-            let existing: Option<String> = tx
-                .query_row(
-                    "SELECT updated_at FROM snippets WHERE uuid = ?",
+            // Fetch the local row's timestamp plus the content fields, so an
+            // overwrite that would drop a diverging local edit can preserve it.
+            let existing: Option<(String, String, String, String, String, String, String, String)> =
+                tx.query_row(
+                    "SELECT updated_at, title, description, code, language, tags, model, kind FROM snippets WHERE uuid = ?",
                     params![rec.uuid],
-                    |row| row.get(0),
+                    |r| {
+                        Ok((
+                            r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+                            r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
+                        ))
+                    },
                 )
                 .optional()?;
             match existing {
                 None => {
                     tx.execute(
-                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, copy_count, last_used_at, created_at, updated_at, deleted)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, icon, copy_count, last_used_at, created_at, updated_at, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         params![
                             rec.uuid, rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.collection, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.collection, rec.icon, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64
                         ],
                     )?;
                     applied += 1;
                 }
-                Some(current) if rec.updated_at > current => {
+                Some((cur_updated, c_title, c_desc, c_code, c_lang, c_tags, c_model, c_kind))
+                    if rec.updated_at > cur_updated =>
+                {
+                    // The incoming edit is newer and will overwrite the local
+                    // row. If the local *content* actually diverged (a genuine
+                    // conflicting edit, not just a metadata/timestamp bump),
+                    // capture the local version into history first so it isn't
+                    // lost, and count it as a conflict.
+                    let content_differs = c_title != rec.title
+                        || c_desc != rec.description
+                        || c_code != rec.code
+                        || c_lang != rec.language
+                        || c_tags != tags_json
+                        || c_model != rec.model
+                        || c_kind != rec.kind;
+                    if content_differs {
+                        tx.execute(
+                            "INSERT INTO snippet_revisions (snippet_uuid, title, description, code, language, tags, model, kind, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            params![rec.uuid, c_title, c_desc, c_code, c_lang, c_tags, c_model, c_kind, cur_updated],
+                        )?;
+                        tx.execute(
+                            "DELETE FROM snippet_revisions WHERE snippet_uuid = ?1 AND id NOT IN (SELECT id FROM snippet_revisions WHERE snippet_uuid = ?1 ORDER BY id DESC LIMIT ?2)",
+                            params![rec.uuid, REVISION_KEEP],
+                        )?;
+                        conflicts += 1;
+                    }
                     tx.execute(
-                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, collection = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
+                        "UPDATE snippets SET title = ?, description = ?, code = ?, language = ?, tags = ?, favorite = ?, model = ?, kind = ?, color = ?, template = ?, last_device = ?, collection = ?, icon = ?, copy_count = ?, last_used_at = ?, created_at = ?, updated_at = ?, deleted = ? WHERE uuid = ?",
                         params![
                             rec.title, rec.description, rec.code, rec.language, tags_json,
-                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.collection, rec.copy_count, rec.last_used_at,
+                            rec.favorite as i64, rec.model, rec.kind, rec.color, rec.template as i64, rec.last_device, rec.collection, rec.icon, rec.copy_count, rec.last_used_at,
                             rec.created_at, rec.updated_at, rec.deleted as i64, rec.uuid
                         ],
                     )?;
@@ -969,7 +1114,7 @@ impl Database {
             }
         }
         tx.commit()?;
-        Ok(applied)
+        Ok((applied, conflicts))
     }
 }
 
@@ -1020,6 +1165,7 @@ mod sqli_tests {
             color: None,
             template: None,
             collection: None,
+            icon: None,
         }
     }
 
@@ -1083,6 +1229,7 @@ mod sqli_tests {
                 color: None,
                 template: None,
                 collection: None,
+                icon: None,
             },
         )
         .unwrap();
@@ -1131,6 +1278,7 @@ mod sqli_tests {
                 color: None,
                 template: None,
                 collection: None,
+                icon: None,
             },
         )
         .unwrap();
@@ -1175,6 +1323,7 @@ mod sqli_tests {
                     color,
                     template: None,
                     collection: None,
+                    icon: None,
                 },
             )
             .unwrap();
@@ -1223,6 +1372,7 @@ mod sqli_tests {
                 color: None,
                 template: Some(false),
                 collection: None,
+                icon: None,
             },
         )
         .unwrap();
@@ -1242,6 +1392,7 @@ mod sqli_tests {
                 color: None,
                 template: Some(true),
                 collection: None,
+                icon: None,
             },
         )
         .unwrap();
@@ -1283,6 +1434,7 @@ mod sqli_tests {
                     color: None,
                     template: None,
                     collection,
+                    icon: None,
                 },
             )
             .unwrap();
@@ -1300,6 +1452,138 @@ mod sqli_tests {
         db2.apply_sync_records(records).unwrap();
         let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
         assert!(synced.iter().any(|s| s.title == "filed" && s.collection == "Archive"));
+    }
+
+    #[test]
+    fn icon_defaults_empty_and_round_trips() {
+        let db = temp_db();
+
+        // Omitted icon → "" (none).
+        let a = db.create_snippet(mk("plain", "body")).unwrap();
+        assert_eq!(a.icon, "");
+
+        // An icon set on create persists and reads back.
+        let mut with_icon = mk("rocket", "body");
+        with_icon.icon = Some("🚀".into());
+        let b = db.create_snippet(with_icon).unwrap();
+        assert_eq!(b.icon, "🚀");
+        assert_eq!(db.get_snippet(b.id).unwrap().unwrap().icon, "🚀");
+
+        // Update can change the icon and clear it back to "".
+        let reicon = |id: i64, icon: Option<String>, db: &Database| {
+            db.update_snippet(
+                id,
+                UpdateSnippetInput {
+                    title: "rocket".into(),
+                    description: None,
+                    code: "body".into(),
+                    language: "text".into(),
+                    tags: None,
+                    model: None,
+                    kind: None,
+                    color: None,
+                    template: None,
+                    collection: None,
+                    icon,
+                },
+            )
+            .unwrap();
+        };
+        reicon(b.id, Some("⭐".into()), &db);
+        assert_eq!(db.get_snippet(b.id).unwrap().unwrap().icon, "⭐");
+        reicon(b.id, Some("".into()), &db);
+        assert_eq!(db.get_snippet(b.id).unwrap().unwrap().icon, "");
+
+        // icon survives a sync round-trip (export → re-import into a fresh DB).
+        reicon(b.id, Some("🔥".into()), &db);
+        let records = db.get_all_for_sync().unwrap();
+        assert!(records.iter().any(|r| r.icon == "🔥"));
+        let db2 = temp_db();
+        db2.apply_sync_records(records).unwrap();
+        let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
+        assert!(synced.iter().any(|s| s.title == "rocket" && s.icon == "🔥"));
+    }
+
+    #[test]
+    fn sync_overwrite_of_a_diverged_edit_is_preserved_to_history() {
+        // A prompt exists on two devices; both edit it while offline. On sync the
+        // newer edit wins — but the older, overwritten local edit must be saved to
+        // history (not silently lost) and reported as a conflict.
+        let local = temp_db();
+        let s = local.create_snippet(mk("shared", "original")).unwrap();
+        let uuid = s.uuid.clone();
+
+        // This device makes an edit ("local edit").
+        local
+            .update_snippet(
+                s.id,
+                UpdateSnippetInput {
+                    title: "shared".into(),
+                    description: None,
+                    code: "my local edit".into(),
+                    language: "text".into(),
+                    tags: None,
+                    model: None,
+                    kind: None,
+                    color: None,
+                    template: None,
+                    collection: None,
+                    icon: None,
+                },
+            )
+            .unwrap();
+
+        // A newer edit arrives from another device (later updated_at, different
+        // content) via sync.
+        let incoming = SyncRecord {
+            uuid: uuid.clone(),
+            title: "shared".into(),
+            description: String::new(),
+            code: "their newer edit".into(),
+            language: "text".into(),
+            tags: vec![],
+            favorite: false,
+            model: String::new(),
+            kind: "prompt".into(),
+            color: String::new(),
+            template: false,
+            last_device: "other".into(),
+            collection: String::new(),
+            icon: String::new(),
+            copy_count: 0,
+            last_used_at: None,
+            created_at: "2999-01-01 00:00:00".into(),
+            updated_at: "2999-01-01 00:00:00".into(),
+            deleted: false,
+        };
+        let (applied, conflicts) = local.apply_sync_records(vec![incoming]).unwrap();
+        assert_eq!(applied, 1);
+        assert_eq!(conflicts, 1, "a diverging overwrite must be counted");
+
+        // The live row now holds the winning (remote) edit...
+        assert_eq!(local.get_snippet(s.id).unwrap().unwrap().code, "their newer edit");
+        // ...and the overwritten local edit is recoverable from history.
+        let revs = local.get_revisions(&uuid).unwrap();
+        assert!(
+            revs.iter().any(|r| r.code == "my local edit"),
+            "overwritten local edit must be preserved in history"
+        );
+
+        // A non-diverging update (same content, newer only by timestamp) is not a
+        // conflict.
+        let same = SyncRecord {
+            updated_at: "2999-06-01 00:00:00".into(),
+            created_at: "2999-06-01 00:00:00".into(),
+            code: "their newer edit".into(),
+            ..local
+                .get_all_for_sync()
+                .unwrap()
+                .into_iter()
+                .find(|r| r.uuid == uuid)
+                .unwrap()
+        };
+        let (_applied2, conflicts2) = local.apply_sync_records(vec![same]).unwrap();
+        assert_eq!(conflicts2, 0, "an identical-content update is not a conflict");
     }
 
     #[test]
@@ -1330,6 +1614,7 @@ mod sqli_tests {
                 color: None,
                 template: None,
                 collection: None,
+                icon: None,
             },
         )
         .unwrap();
@@ -1344,6 +1629,72 @@ mod sqli_tests {
         let synced = db2.get_all_snippets(None, None, None, None, None).unwrap();
         let second = synced.iter().find(|s| s.title == "second").unwrap();
         assert_eq!(second.last_device, "laptop");
+    }
+
+    #[test]
+    fn full_text_search_matches_body_prefix_and_survives_special_chars() {
+        let db = temp_db();
+        db.create_snippet(mk("Alpha", "the quick brown fox")).unwrap();
+        db.create_snippet(mk("Beta", "lazy dog sleeps")).unwrap();
+
+        // Default ("all") search now covers the body: "fox" finds Alpha even
+        // though the word is only in the body, not the title/tags.
+        let hits = db
+            .get_all_snippets(Some("fox"), None, None, Some("all"), None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Alpha");
+
+        // Prefix matching: "qui" matches "quick".
+        let pre = db
+            .get_all_snippets(Some("qui"), None, None, Some("all"), None)
+            .unwrap();
+        assert!(pre.iter().any(|s| s.title == "Alpha"));
+
+        // Multiple tokens are AND-ed together.
+        let both = db
+            .get_all_snippets(Some("lazy dog"), None, None, Some("all"), None)
+            .unwrap();
+        assert_eq!(both.len(), 1);
+        assert_eq!(both[0].title, "Beta");
+
+        // FTS query-syntax characters can't error or inject — each is just data.
+        for q in ["\" OR 1", "fox*", "NEAR(a b)", ":col", "a AND b", "((("] {
+            let _ = db
+                .get_all_snippets(Some(q), None, None, Some("all"), None)
+                .unwrap();
+        }
+        assert!(table_exists(&db));
+
+        // The triggers keep the index current: after an edit, the old body term is
+        // gone and the new one is found.
+        let beta_id = both[0].id;
+        db.update_snippet(
+            beta_id,
+            UpdateSnippetInput {
+                title: "Beta".into(),
+                description: None,
+                code: "totally different now".into(),
+                language: "text".into(),
+                tags: None,
+                model: None,
+                kind: None,
+                color: None,
+                template: None,
+                collection: None,
+                icon: None,
+            },
+        )
+        .unwrap();
+        let gone = db
+            .get_all_snippets(Some("dog"), None, None, Some("all"), None)
+            .unwrap();
+        assert!(gone.is_empty(), "index must drop the old body on edit");
+        let now = db
+            .get_all_snippets(Some("different"), None, None, Some("all"), None)
+            .unwrap();
+        assert_eq!(now.len(), 1);
+        assert_eq!(now[0].title, "Beta");
     }
 
     #[test]
@@ -1521,6 +1872,7 @@ mod sqli_tests {
             color: None,
             template: None,
             collection: None,
+            icon: None,
         };
         db.update_snippet(s.id, upd("v2", "body two")).unwrap();
         let revs = db.get_revisions(&s.uuid).unwrap();
@@ -1562,6 +1914,7 @@ mod sqli_tests {
             color: None,
             template: None,
             collection: None,
+            icon: None,
         };
         let a = db.create_snippet(tagged("a", vec!["rust", "cli"])).unwrap();
         let b = db.create_snippet(tagged("b", vec!["rust"])).unwrap();

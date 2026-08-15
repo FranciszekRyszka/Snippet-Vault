@@ -13,6 +13,51 @@ ships.
 
 ## [Unreleased]
 
+## [4.0.0] — 2026-08-15
+
+### Added
+- **AI assistant (opt-in, desktop, bring-your-own-key).** Add a key for an
+  OpenAI-compatible API in **Settings → AI assistant** to unlock **Improve**,
+  **Suggest title**, and **Suggest tags** in the prompt editor. Works with OpenAI
+  or any compatible endpoint (a proxy, or a local server like Ollama / LM Studio
+  — just change the base URL). The key is stored in the OS keyring; it&rsquo;s
+  entirely off until you add one, and using it sends the prompt text you act on to
+  the configured provider.
+- **Syntax-highlighting code editor.** Editing a **code snippet** now uses a
+  CodeMirror editor with per-language highlighting and line numbers, matching the
+  highlighted read view. Prompts keep the plain text area (better for prose and
+  the `{{variable}}` hints).
+- **Full-text search (FTS5).** The default search now runs on a SQLite FTS5
+  index instead of `LIKE` scans: it's fast at any library size, tokenized (so it
+  ranks and prefix-matches words), and — new — it now also **searches the prompt
+  body**, not just the title/description/tags/model. The index is kept current
+  automatically on every edit and sync. The **Title** and **Tags** search modes
+  keep their exact substring behavior.
+- **Import from Claude and Gemini.** Alongside the existing ChatGPT importer, you
+  can now drop a **Claude** data export (`conversations.json`) or a **Gemini**
+  Google Takeout "My Activity" export — each conversation/prompt becomes an entry,
+  tagged and filed into a per-source collection (**Claude** / **Gemini**) just
+  like ChatGPT imports.
+- **Conflict visibility.** When a sync overwrites a prompt you'd edited on this
+  device with a newer version from another device, the previous local version is
+  now **saved to that prompt's History** instead of being silently dropped — and
+  a notice tells you how many prompts this happened to, so you can recover the old
+  text from **History** if needed. Applies to both the desktop sync and the
+  self-hosted server merge.
+- **Backup frequency (desktop).** The launch auto-backup is no longer fixed at
+  once a day — **Settings → Library** now lets you choose **every launch / daily /
+  weekly / monthly**. Existing auto-backup users keep the daily cadence.
+- **Per-prompt icons.** Give a prompt an emoji **icon** that shows before its
+  title in the list and detail view — pick from a quick row or type any emoji in
+  the editor. Like color, it's a sync-safe visual tag that travels through
+  export/import and isn't part of version history. (ChatGPT imports are stamped
+  with 💬.)
+- **Public `GET /api/version` (server).** A token-free probe that returns
+  `{ name, version }` with no database access, so a monitor, a script, or the
+  desktop connect flow can check which server build is running (and whether it's
+  up to date) without a token. The version is inlined at build from
+  `package.json`. Set `SNIPVAULT_HIDE_VERSION=1` to return only the identity.
+
 ## [3.6.0] — 2026-08-15
 
 ### Added
@@ -570,7 +615,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.6.0...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.6.0...v4.0.0
 [3.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.5.5...v3.6.0
 [3.5.5]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.4.0...v3.5.5
 [3.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.3.0...v3.4.0

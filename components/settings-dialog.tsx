@@ -59,6 +59,7 @@ import {
   setAutoUpdateEnabled,
   type AvailableUpdate,
 } from "@/lib/updater";
+import { getAiSettings, setAiSettings } from "@/lib/ai";
 
 type SettingsDialogProps = {
   onClose: () => void;
@@ -96,6 +97,15 @@ export function SettingsDialog({
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [backupsDir, setBackupsDir] = useState<string | null>(null);
   const [autoBackup, setAutoBackup] = useState(false);
+  // Minimum days between launch auto-backups (0 = every launch, 1 = daily, …).
+  const [backupInterval, setBackupInterval] = useState(1);
+  // Optional AI assistant (BYO key). The key input stays empty on load — we only
+  // know whether one is set (aiHasKey), never its value.
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiKey, setAiKey] = useState("");
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
   // Trash auto-purge retention (days; 0 = off) and this install's device name.
   const [trashDays, setTrashDays] = useState(0);
   const [deviceName, setDeviceNameState] = useState("");
@@ -142,9 +152,19 @@ export function SettingsDialog({
     getDatabasePath().then(setDbPath).catch(() => setDbPath(null));
     getBackupsDir().then(setBackupsDir).catch(() => setBackupsDir(null));
     getBackupSettings()
-      .then((s) => setAutoBackup(s.auto_backup))
+      .then((s) => {
+        setAutoBackup(s.auto_backup);
+        setBackupInterval(s.interval_days);
+      })
       .catch(() => setAutoBackup(false));
     getTrashRetentionDays().then(setTrashDays).catch(() => setTrashDays(0));
+    getAiSettings()
+      .then((s) => {
+        setAiBaseUrl(s.base_url);
+        setAiModel(s.model);
+        setAiHasKey(s.has_key);
+      })
+      .catch(() => {});
     getDeviceName()
       .then((n) => {
         setDeviceNameState(n);
@@ -399,9 +419,49 @@ export function SettingsDialog({
   const toggleAutoBackup = async (enabled: boolean) => {
     setAutoBackup(enabled);
     try {
-      await setBackupSettings(enabled);
+      await setBackupSettings(enabled, undefined, backupInterval);
     } catch (err) {
       setAutoBackup(!enabled);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Change how often the launch backup runs. Optimistic; reverts on failure.
+  const changeBackupInterval = async (days: number) => {
+    const prev = backupInterval;
+    setBackupInterval(days);
+    try {
+      await setBackupSettings(autoBackup, undefined, days);
+    } catch (err) {
+      setBackupInterval(prev);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Save the AI endpoint/model, and the key only if one was typed (a blank key
+  // field leaves the stored key untouched).
+  const saveAi = async () => {
+    try {
+      const typed = aiKey.trim();
+      await setAiSettings(aiBaseUrl.trim(), aiModel.trim(), typed || undefined);
+      if (typed) {
+        setAiHasKey(true);
+        setAiKey("");
+      }
+      setAiSaved(true);
+      setTimeout(() => setAiSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Remove the stored AI key (keeps the endpoint/model).
+  const removeAiKey = async () => {
+    try {
+      await setAiSettings(aiBaseUrl.trim(), aiModel.trim(), "");
+      setAiHasKey(false);
+      setAiKey("");
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -518,8 +578,8 @@ export function SettingsDialog({
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               Import prompts from a JSON/.md/.txt file — including a{" "}
-              <strong>ChatGPT</strong> data export (
-              <code>conversations.json</code>) — export your whole library
+              <strong>ChatGPT</strong>, <strong>Claude</strong>, or{" "}
+              <strong>Gemini</strong> data export — export your whole library
               as <strong>JSON</strong> (re-importable) or a single
               <strong> Markdown</strong> document (readable/portable), or restore
               recently deleted prompts from Trash. You can also drag files onto the
@@ -839,8 +899,23 @@ export function SettingsDialog({
                 onChange={(e) => toggleAutoBackup(e.target.checked)}
                 className="h-4 w-4 rounded border-input accent-primary"
               />
-              Automatically back up on launch (at most once a day)
+              Automatically back up on launch
             </label>
+            {autoBackup && (
+              <label className="mt-2 flex items-center gap-2 pl-6 text-sm text-muted-foreground">
+                At most
+                <select
+                  value={backupInterval}
+                  onChange={(e) => changeBackupInterval(Number(e.target.value))}
+                  className="rounded-lg border border-input bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value={0}>every launch</option>
+                  <option value={1}>once a day</option>
+                  <option value={7}>once a week</option>
+                  <option value={30}>once a month</option>
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="border-t border-border pt-5">
@@ -900,6 +975,79 @@ export function SettingsDialog({
               <option value={90}>Clear after 90 days</option>
             </select>
           </div>
+
+          {desktop && (
+          <div className="border-t border-border pt-5">
+            <label className="block text-sm font-medium text-foreground">
+              AI assistant{" "}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Add a key for an OpenAI-compatible API to enable{" "}
+              <strong>Improve</strong>, <strong>Suggest title</strong>, and{" "}
+              <strong>Suggest tags</strong> in the prompt editor. Works with OpenAI
+              or any compatible endpoint (a proxy, or a local server like Ollama /
+              LM Studio — just change the URL). Your key is stored in the OS
+              keyring. Using these features <strong>sends the prompt text you act
+              on to that provider</strong>; it&rsquo;s off until you add a key.
+            </p>
+            <div className="mt-2 grid gap-2">
+              <input
+                type="text"
+                value={aiBaseUrl}
+                placeholder="https://api.openai.com/v1"
+                onChange={(e) => {
+                  setAiBaseUrl(e.target.value);
+                  setAiSaved(false);
+                }}
+                aria-label="AI API base URL"
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <input
+                type="text"
+                value={aiModel}
+                placeholder="gpt-4o-mini"
+                onChange={(e) => {
+                  setAiModel(e.target.value);
+                  setAiSaved(false);
+                }}
+                aria-label="AI model name"
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={aiKey}
+                  placeholder={aiHasKey ? "•••••••• (key saved)" : "API key"}
+                  onChange={(e) => {
+                    setAiKey(e.target.value);
+                    setAiSaved(false);
+                  }}
+                  aria-label="AI API key"
+                  autoComplete="off"
+                  className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  type="button"
+                  onClick={saveAi}
+                  disabled={aiSaved}
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  {aiSaved ? "Saved" : "Save"}
+                </button>
+                {aiHasKey && (
+                  <button
+                    type="button"
+                    onClick={removeAiKey}
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+                  >
+                    Remove key
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          )}
 
           <div className="border-t border-border pt-5">
             <div className="mb-1.5 flex items-center justify-between">

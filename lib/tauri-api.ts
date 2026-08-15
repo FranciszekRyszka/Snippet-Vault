@@ -23,6 +23,8 @@ export type Snippet = {
   last_device: string;
   // Collection (folder) this entry belongs to ("" = none). Filtered client-side.
   collection: string;
+  // Short display icon (an emoji, "" = none) shown before the title.
+  icon: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -40,6 +42,7 @@ export type CreateSnippetInput = {
   color?: string;
   template?: boolean;
   collection?: string;
+  icon?: string;
 };
 
 export type UpdateSnippetInput = {
@@ -53,6 +56,7 @@ export type UpdateSnippetInput = {
   color?: string;
   template?: boolean;
   collection?: string;
+  icon?: string;
 };
 
 // Check if running in Tauri.
@@ -184,9 +188,15 @@ export type SyncRecord = Omit<Snippet, "id"> & { deleted: boolean };
 export type SyncResult = {
   // How many local rows the incoming server data inserted or updated.
   applied: number;
+  // How many of those overwrote a diverging local edit (a conflict). The prior
+  // local version is saved to that prompt's History, so nothing is lost.
+  conflicts: number;
   // Total live (non-deleted) snippets after the sync.
   total: number;
 };
+
+// The shape apply_sync_records returns (desktop command / sync-merge summary).
+type ApplyResult = { applied: number; conflicts: number };
 
 // Reconcile the local library with the configured sync server in one round
 // trip: push every local record (tombstones included), receive the server's
@@ -217,11 +227,12 @@ export async function syncNow(): Promise<SyncResult> {
   if (!res.ok) throw new Error(`Sync failed (HTTP ${res.status}).`);
 
   const body = (await res.json()) as { records: SyncRecord[] };
-  const applied = await invoke<number>("apply_sync_records", {
-    records: body.records,
-  });
+  const { applied, conflicts } = await invoke<ApplyResult>(
+    "apply_sync_records",
+    { records: body.records }
+  );
   const total = body.records.filter((r) => !r.deleted).length;
-  return { applied, total };
+  return { applied, conflicts, total };
 }
 
 // API functions that work in browser, local desktop, and remote-server modes
@@ -439,7 +450,10 @@ export async function exportLibrary(): Promise<SyncRecord[]> {
 // how many rows were inserted or updated.
 export async function importLibrary(records: SyncRecord[]): Promise<number> {
   if (await useLocalDb()) {
-    return invoke<number>("apply_sync_records", { records });
+    const { applied } = await invoke<ApplyResult>("apply_sync_records", {
+      records,
+    });
+    return applied;
   }
 
   const res = await apiFetch("/api/sync", {
@@ -512,7 +526,12 @@ export async function openBackupsDir(): Promise<void> {
 
 // Opt-in automatic-backup settings: whether to snapshot on launch (at most once
 // a day) and how many snapshots to keep.
-export type BackupSettings = { auto_backup: boolean; keep: number };
+export type BackupSettings = {
+  auto_backup: boolean;
+  keep: number;
+  // Minimum days between launch auto-backups (0 = every launch, 1 = daily, …).
+  interval_days: number;
+};
 
 export async function getBackupSettings(): Promise<BackupSettings> {
   return invoke<BackupSettings>("get_backup_settings");
@@ -520,9 +539,14 @@ export async function getBackupSettings(): Promise<BackupSettings> {
 
 export async function setBackupSettings(
   autoBackup: boolean,
-  keep?: number
+  keep?: number,
+  intervalDays?: number
 ): Promise<void> {
-  await invoke("set_backup_settings", { autoBackup, keep: keep ?? null });
+  await invoke("set_backup_settings", {
+    autoBackup,
+    keep: keep ?? null,
+    intervalDays: intervalDays ?? null,
+  });
 }
 
 // Trash auto-purge retention, in days (0 = off/keep forever). Desktop-only.

@@ -6,6 +6,7 @@ import {
   sanitizeKind,
   parseId,
   validTimestampOr,
+  ftsMatchQuery,
 } from "./api-utils";
 
 // These pure helpers guard every web write path and mirror the desktop's
@@ -66,6 +67,31 @@ describe("validTimestampOr", () => {
     expect(validTimestampOr("not-a-date", null)).toBeNull();
     expect(validTimestampOr("2026-08-04T10:00:00", "fb")).toBe("fb"); // wrong separator
     expect(validTimestampOr(12345, null)).toBeNull();
+  });
+});
+
+describe("ftsMatchQuery", () => {
+  it("quotes each token as a prefix term, AND-ed", () => {
+    expect(ftsMatchQuery("lazy dog")).toBe('"lazy"* "dog"*');
+  });
+  it("splits on punctuation and drops empties", () => {
+    expect(ftsMatchQuery("foo-bar, baz")).toBe('"foo"* "bar"* "baz"*');
+  });
+  it("keeps unicode letters/numbers as single tokens", () => {
+    expect(ftsMatchQuery("Übersetzung 2024")).toBe('"Übersetzung"* "2024"*');
+  });
+  it("returns null when there are no searchable tokens", () => {
+    expect(ftsMatchQuery("%")).toBeNull();
+    expect(ftsMatchQuery("   ")).toBeNull();
+    expect(ftsMatchQuery("!!! ??? ...")).toBeNull();
+  });
+  it("turns an injection-y string into plain tokens", () => {
+    expect(ftsMatchQuery('" OR 1=1 --')).toBe('"OR"* "1"* "1"*');
+  });
+  it("neutralizes FTS syntax characters (no quotes/stars/colons leak)", () => {
+    const q = ftsMatchQuery('near("a" b):c*');
+    // Every term is wrapped; no bare FTS operator survives.
+    expect(q).toBe('"near"* "a"* "b"* "c"*');
   });
 });
 

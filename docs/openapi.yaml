@@ -124,6 +124,36 @@ paths:
                   error:
                     type: string
 
+  /api/version:
+    get:
+      tags: [Ops]
+      operationId: getVersion
+      summary: Public server version (no token)
+      description: |
+        Token-free identity/version probe: unlike every other `/api` route this is
+        reachable **without** a bearer token, and it touches no database. It reports
+        only the server software version (already public on GitHub), so a monitor,
+        a script, or the desktop connect flow can check which build is running and
+        whether it's up to date. Set `SNIPVAULT_HIDE_VERSION=1` to return only the
+        `name`.
+      security: []
+      responses:
+        "200":
+          description: The server identity and (unless hidden) its version.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                    const: snipvault-server
+                  version:
+                    type: string
+                    description: Semver of the running build. Omitted when SNIPVAULT_HIDE_VERSION=1.
+                    example: 4.0.0
+
   /api/status:
     get:
       tags: [Ops]
@@ -696,6 +726,15 @@ components:
       maxLength: 100
       default: ""
 
+    Icon:
+      type: string
+      description: >
+        Per-prompt display icon (an emoji, "" = none) shown before the title.
+        Trimmed and length-capped (16 chars, to allow multi-codepoint emoji) on
+        write. Carried through sync and export/import like other metadata.
+      maxLength: 16
+      default: ""
+
     Snippet:
       type: object
       description: A prompt/snippet entry as returned by the API.
@@ -759,6 +798,8 @@ components:
           $ref: "#/components/schemas/LastDevice"
         collection:
           $ref: "#/components/schemas/Collection"
+        icon:
+          $ref: "#/components/schemas/Icon"
         copy_count:
           type: integer
           minimum: 0
@@ -805,6 +846,8 @@ components:
           $ref: "#/components/schemas/Template"
         collection:
           $ref: "#/components/schemas/Collection"
+        icon:
+          $ref: "#/components/schemas/Icon"
 
     SnippetRestore:
       type: object
@@ -844,6 +887,8 @@ components:
           $ref: "#/components/schemas/LastDevice"
         collection:
           $ref: "#/components/schemas/Collection"
+        icon:
+          $ref: "#/components/schemas/Icon"
         copy_count:
           type: integer
           minimum: 0
@@ -938,6 +983,8 @@ components:
           $ref: "#/components/schemas/LastDevice"
         collection:
           $ref: "#/components/schemas/Collection"
+        icon:
+          $ref: "#/components/schemas/Icon"
         copy_count:
           type: integer
           minimum: 0

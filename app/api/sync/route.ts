@@ -1,4 +1,4 @@
-import { dbForRequest } from "@/lib/db";
+import { dbForRequest, captureRevisionIfChanged } from "@/lib/db";
 import { NextResponse } from "next/server";
 import {
   sanitizeTags,
@@ -6,6 +6,7 @@ import {
   sanitizeKind,
   sanitizeColor,
   sanitizeCollection,
+  sanitizeIcon,
   sanitizeDevice,
   validTimestampOr,
 } from "@/lib/api-utils";
@@ -37,6 +38,7 @@ type SyncRecord = {
   template: boolean;
   last_device: string;
   collection: string;
+  icon: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -67,6 +69,7 @@ function rowToRecord(row: Record<string, unknown>): SyncRecord {
     template: Boolean(row.template),
     last_device: (row.last_device as string) ?? "",
     collection: (row.collection as string) ?? "",
+    icon: (row.icon as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
     created_at: (row.created_at as string) ?? "",
@@ -94,6 +97,7 @@ function normalizeIncoming(raw: unknown): {
   template: number;
   lastDevice: string;
   collection: string;
+  icon: string;
   copyCount: number;
   lastUsedAt: string | null;
   createdAt: string;
@@ -132,6 +136,7 @@ function normalizeIncoming(raw: unknown): {
     template: r.template === true ? 1 : 0,
     lastDevice: sanitizeDevice(r.last_device),
     collection: sanitizeCollection(r.collection),
+    icon: sanitizeIcon(r.icon),
     copyCount,
     lastUsedAt: validTimestampOr(r.last_used_at, null),
     createdAt: validTimestampOr(r.created_at, now) ?? now,
@@ -171,33 +176,57 @@ export async function POST(request: Request) {
       );
     }
 
-    const findStmt = db.prepare("SELECT updated_at FROM snippets WHERE uuid = ?");
+    const findStmt = db.prepare("SELECT * FROM snippets WHERE uuid = ?");
     const insertStmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, copy_count, last_used_at, created_at, updated_at, deleted)
-      VALUES (@uuid, @title, @description, @code, @language, @tagsJson, @favorite, @model, @kind, @color, @template, @lastDevice, @collection, @copyCount, @lastUsedAt, @createdAt, @updatedAt, @deleted)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, icon, copy_count, last_used_at, created_at, updated_at, deleted)
+      VALUES (@uuid, @title, @description, @code, @language, @tagsJson, @favorite, @model, @kind, @color, @template, @lastDevice, @collection, @icon, @copyCount, @lastUsedAt, @createdAt, @updatedAt, @deleted)
     `);
     const updateStmt = db.prepare(`
       UPDATE snippets
       SET title = @title, description = @description, code = @code, language = @language,
-          tags = @tagsJson, favorite = @favorite, model = @model, kind = @kind, color = @color, template = @template, last_device = @lastDevice, collection = @collection, copy_count = @copyCount,
+          tags = @tagsJson, favorite = @favorite, model = @model, kind = @kind, color = @color, template = @template, last_device = @lastDevice, collection = @collection, icon = @icon, copy_count = @copyCount,
           last_used_at = @lastUsedAt, created_at = @createdAt, updated_at = @updatedAt, deleted = @deleted
       WHERE uuid = @uuid
     `);
 
     let applied = 0;
+    let conflicts = 0;
     const merge = db.transaction((records: unknown[]) => {
       for (const raw of records) {
         const rec = normalizeIncoming(raw);
         if (!rec) continue;
         const existing = findStmt.get(rec.uuid) as
-          | { updated_at: string }
+          | Record<string, unknown>
           | undefined;
         if (!existing) {
           insertStmt.run(rec);
           applied++;
-        } else if (rec.updatedAt > existing.updated_at) {
+        } else if (rec.updatedAt > (existing.updated_at as string)) {
           // Fixed-width UTC timestamps ("YYYY-MM-DD HH:MM:SS") compare correctly
-          // as strings, so this is a true "most recent edit wins".
+          // as strings, so this is a true "most recent edit wins". Before the
+          // overwrite, if the stored content diverged from the incoming edit,
+          // preserve the local version in history (so newest-wins never silently
+          // drops a real conflicting edit) and count it as a conflict.
+          const differs =
+            (existing.title as string) !== rec.title ||
+            (existing.description as string) !== rec.description ||
+            (existing.code as string) !== rec.code ||
+            (existing.language as string) !== rec.language ||
+            (existing.tags as string) !== rec.tagsJson ||
+            (existing.model as string) !== rec.model ||
+            (existing.kind as string) !== rec.kind;
+          if (differs) {
+            captureRevisionIfChanged(db, existing, {
+              title: rec.title,
+              description: rec.description,
+              code: rec.code,
+              language: rec.language,
+              tagsJson: rec.tagsJson,
+              model: rec.model,
+              kind: rec.kind,
+            });
+            conflicts++;
+          }
           updateStmt.run(rec);
           applied++;
         }
@@ -210,7 +239,7 @@ export async function POST(request: Request) {
       .all() as Record<string, unknown>[];
     const records = rows.map(rowToRecord);
 
-    return NextResponse.json({ records, applied });
+    return NextResponse.json({ records, applied, conflicts });
   } catch (error) {
     console.error("Sync failed:", error);
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });

@@ -13,6 +13,9 @@ const MAX_TITLE_LEN: usize = 255;
 const MAX_MODEL_LEN: usize = 100;
 const MAX_DEVICE_LEN: usize = 64;
 const MAX_COLLECTION_LEN: usize = 100;
+// An emoji can be several Unicode scalar values (ZWJ sequences, skin-tone
+// modifiers), so allow a small handful of chars rather than exactly one.
+const MAX_ICON_LEN: usize = 16;
 const MAX_TAGS: usize = 20;
 // Match the server's sync ingress caps (app/api/sync/route.ts) so both
 // directions bound the same fields to the same sizes.
@@ -97,6 +100,14 @@ fn normalize_collection(collection: Option<String>) -> String {
         .unwrap_or_default()
 }
 
+/// Normalize a per-prompt icon (an emoji): trim and cap length. Free-form
+/// ("" = none); never rejects. Mirrors the web `sanitizeIcon`.
+fn normalize_icon(icon: Option<String>) -> String {
+    icon
+        .map(|i| truncate_chars(i.trim(), MAX_ICON_LEN))
+        .unwrap_or_default()
+}
+
 /// Return `ts` if it parses as our stored timestamp format, else `fallback`.
 fn valid_timestamp_or(ts: &str, fallback: &str) -> String {
     if chrono::NaiveDateTime::parse_from_str(ts, TIMESTAMP_FMT).is_ok() {
@@ -129,6 +140,7 @@ pub fn sanitize_create(mut input: CreateSnippetInput) -> Result<CreateSnippetInp
     input.kind = Some(normalize_kind(input.kind.take()));
     input.color = Some(normalize_color(input.color.take()));
     input.collection = Some(normalize_collection(input.collection.take()));
+    input.icon = Some(normalize_icon(input.icon.take()));
     Ok(input)
 }
 
@@ -140,6 +152,7 @@ pub fn sanitize_update(mut input: UpdateSnippetInput) -> Result<UpdateSnippetInp
     input.kind = Some(normalize_kind(input.kind.take()));
     input.color = Some(normalize_color(input.color.take()));
     input.collection = Some(normalize_collection(input.collection.take()));
+    input.icon = Some(normalize_icon(input.icon.take()));
     Ok(input)
 }
 
@@ -155,6 +168,7 @@ pub fn sanitize_restore(mut s: Snippet) -> Result<Snippet, String> {
     s.color = normalize_color(Some(s.color));
     s.last_device = truncate_chars(s.last_device.trim(), MAX_DEVICE_LEN);
     s.collection = normalize_collection(Some(s.collection));
+    s.icon = normalize_icon(Some(s.icon));
     s.copy_count = s.copy_count.clamp(0, i64::MAX - 1);
 
     let now = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
@@ -187,6 +201,7 @@ pub fn sanitize_sync_record(mut r: SyncRecord) -> SyncRecord {
     r.color = normalize_color(Some(r.color));
     r.last_device = truncate_chars(r.last_device.trim(), MAX_DEVICE_LEN);
     r.collection = normalize_collection(Some(r.collection));
+    r.icon = normalize_icon(Some(r.icon));
     r.tags = normalize_tags(Some(r.tags));
     r.copy_count = r.copy_count.clamp(0, i64::MAX - 1);
     r.created_at = valid_timestamp_or(&r.created_at, &now);
