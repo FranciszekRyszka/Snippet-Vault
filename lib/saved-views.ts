@@ -10,6 +10,9 @@ export type ViewFilters = {
   activeTag: string;
   favoritesOnly: boolean;
   activeModel: string;
+  // Active collection (folder) filter ("" = all). Optional in older saved
+  // entries; callers coalesce a missing value to "".
+  activeCollection: string;
   kind: "all" | "prompt" | "code";
   sort: string;
 };
@@ -27,6 +30,7 @@ export function hasActiveFilters(f: ViewFilters): boolean {
     !!f.activeTag ||
     f.favoritesOnly ||
     !!f.activeModel ||
+    !!f.activeCollection ||
     f.kind !== "all" ||
     (f.sort !== "recent" && !!f.sort)
   );

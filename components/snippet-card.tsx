@@ -75,6 +75,7 @@ export function exportSnippet(snippet: Snippet): string | null {
       kind: snippet.kind || "prompt",
       color: snippet.color || "",
       template: snippet.template || false,
+      collection: snippet.collection || "",
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",

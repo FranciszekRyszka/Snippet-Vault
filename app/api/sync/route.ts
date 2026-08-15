@@ -5,6 +5,7 @@ import {
   sanitizeModel,
   sanitizeKind,
   sanitizeColor,
+  sanitizeCollection,
   sanitizeDevice,
   validTimestampOr,
 } from "@/lib/api-utils";
@@ -35,6 +36,7 @@ type SyncRecord = {
   color: string;
   template: boolean;
   last_device: string;
+  collection: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -64,6 +66,7 @@ function rowToRecord(row: Record<string, unknown>): SyncRecord {
     color: (row.color as string) ?? "",
     template: Boolean(row.template),
     last_device: (row.last_device as string) ?? "",
+    collection: (row.collection as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
     created_at: (row.created_at as string) ?? "",
@@ -90,6 +93,7 @@ function normalizeIncoming(raw: unknown): {
   color: string;
   template: number;
   lastDevice: string;
+  collection: string;
   copyCount: number;
   lastUsedAt: string | null;
   createdAt: string;
@@ -127,6 +131,7 @@ function normalizeIncoming(raw: unknown): {
     color: sanitizeColor(r.color),
     template: r.template === true ? 1 : 0,
     lastDevice: sanitizeDevice(r.last_device),
+    collection: sanitizeCollection(r.collection),
     copyCount,
     lastUsedAt: validTimestampOr(r.last_used_at, null),
     createdAt: validTimestampOr(r.created_at, now) ?? now,
@@ -168,13 +173,13 @@ export async function POST(request: Request) {
 
     const findStmt = db.prepare("SELECT updated_at FROM snippets WHERE uuid = ?");
     const insertStmt = db.prepare(`
-      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, copy_count, last_used_at, created_at, updated_at, deleted)
-      VALUES (@uuid, @title, @description, @code, @language, @tagsJson, @favorite, @model, @kind, @color, @template, @lastDevice, @copyCount, @lastUsedAt, @createdAt, @updatedAt, @deleted)
+      INSERT INTO snippets (uuid, title, description, code, language, tags, favorite, model, kind, color, template, last_device, collection, copy_count, last_used_at, created_at, updated_at, deleted)
+      VALUES (@uuid, @title, @description, @code, @language, @tagsJson, @favorite, @model, @kind, @color, @template, @lastDevice, @collection, @copyCount, @lastUsedAt, @createdAt, @updatedAt, @deleted)
     `);
     const updateStmt = db.prepare(`
       UPDATE snippets
       SET title = @title, description = @description, code = @code, language = @language,
-          tags = @tagsJson, favorite = @favorite, model = @model, kind = @kind, color = @color, template = @template, last_device = @lastDevice, copy_count = @copyCount,
+          tags = @tagsJson, favorite = @favorite, model = @model, kind = @kind, color = @color, template = @template, last_device = @lastDevice, collection = @collection, copy_count = @copyCount,
           last_used_at = @lastUsedAt, created_at = @createdAt, updated_at = @updatedAt, deleted = @deleted
       WHERE uuid = @uuid
     `);

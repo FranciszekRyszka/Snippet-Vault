@@ -25,6 +25,7 @@ const base: ViewFilters = {
   activeTag: "",
   favoritesOnly: false,
   activeModel: "",
+  activeCollection: "",
   kind: "all",
   sort: "recent",
 };

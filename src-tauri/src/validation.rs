@@ -12,6 +12,7 @@ use std::collections::HashSet;
 const MAX_TITLE_LEN: usize = 255;
 const MAX_MODEL_LEN: usize = 100;
 const MAX_DEVICE_LEN: usize = 64;
+const MAX_COLLECTION_LEN: usize = 100;
 const MAX_TAGS: usize = 20;
 // Match the server's sync ingress caps (app/api/sync/route.ts) so both
 // directions bound the same fields to the same sizes.
@@ -88,6 +89,14 @@ fn normalize_color(color: Option<String>) -> String {
     }
 }
 
+/// Normalize a collection (folder) label: trim and cap length. A free-form
+/// single label ("" = none); never rejects. Mirrors the web `sanitizeCollection`.
+fn normalize_collection(collection: Option<String>) -> String {
+    collection
+        .map(|c| truncate_chars(c.trim(), MAX_COLLECTION_LEN))
+        .unwrap_or_default()
+}
+
 /// Return `ts` if it parses as our stored timestamp format, else `fallback`.
 fn valid_timestamp_or(ts: &str, fallback: &str) -> String {
     if chrono::NaiveDateTime::parse_from_str(ts, TIMESTAMP_FMT).is_ok() {
@@ -119,6 +128,7 @@ pub fn sanitize_create(mut input: CreateSnippetInput) -> Result<CreateSnippetInp
     input.model = Some(normalize_model(input.model.take()));
     input.kind = Some(normalize_kind(input.kind.take()));
     input.color = Some(normalize_color(input.color.take()));
+    input.collection = Some(normalize_collection(input.collection.take()));
     Ok(input)
 }
 
@@ -129,6 +139,7 @@ pub fn sanitize_update(mut input: UpdateSnippetInput) -> Result<UpdateSnippetInp
     input.model = Some(normalize_model(input.model.take()));
     input.kind = Some(normalize_kind(input.kind.take()));
     input.color = Some(normalize_color(input.color.take()));
+    input.collection = Some(normalize_collection(input.collection.take()));
     Ok(input)
 }
 
@@ -143,6 +154,7 @@ pub fn sanitize_restore(mut s: Snippet) -> Result<Snippet, String> {
     s.kind = normalize_kind(Some(s.kind));
     s.color = normalize_color(Some(s.color));
     s.last_device = truncate_chars(s.last_device.trim(), MAX_DEVICE_LEN);
+    s.collection = normalize_collection(Some(s.collection));
     s.copy_count = s.copy_count.clamp(0, i64::MAX - 1);
 
     let now = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
@@ -174,6 +186,7 @@ pub fn sanitize_sync_record(mut r: SyncRecord) -> SyncRecord {
     r.kind = normalize_kind(Some(r.kind));
     r.color = normalize_color(Some(r.color));
     r.last_device = truncate_chars(r.last_device.trim(), MAX_DEVICE_LEN);
+    r.collection = normalize_collection(Some(r.collection));
     r.tags = normalize_tags(Some(r.tags));
     r.copy_count = r.copy_count.clamp(0, i64::MAX - 1);
     r.created_at = valid_timestamp_or(&r.created_at, &now);

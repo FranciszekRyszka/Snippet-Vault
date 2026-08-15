@@ -103,6 +103,9 @@ function initConnection(conn: Database.Database): void {
   // Device that last wrote the row ('' = unknown); stamped by the desktop app,
   // travels through sync. DEFAULT '' backfills existing rows.
   addColumn("last_device", "last_device TEXT NOT NULL DEFAULT ''");
+  // Collection (folder) label ('' = none) for grouping the library, filtered
+  // client-side. DEFAULT '' backfills existing rows.
+  addColumn("collection", "collection TEXT NOT NULL DEFAULT ''");
 
   // Sync support: a stable cross-machine identity (`uuid`) and a soft-delete
   // tombstone (`deleted`). `uuid` is added nullable, backfilled for existing
@@ -210,6 +213,9 @@ export type Snippet = {
   template: boolean;
   // Friendly name of the device that last wrote this row ("" = unknown).
   last_device: string;
+  // Collection (folder) this entry belongs to ("" = none). A single free-form
+  // label used to group the library; filtered client-side.
+  collection: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -242,6 +248,7 @@ export function rowToSnippet(row: Record<string, unknown>): Snippet {
     color: (row.color as string) ?? "",
     template: Boolean(row.template),
     last_device: (row.last_device as string) ?? "",
+    collection: (row.collection as string) ?? "",
     copy_count: Number(row.copy_count ?? 0),
     last_used_at: (row.last_used_at as string) ?? null,
   } as Snippet;

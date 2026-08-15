@@ -60,6 +60,12 @@ export function sanitizeColor(color: unknown): string {
     : "";
 }
 
+// Normalize a collection (folder) label: coerce to a string, trim, cap length.
+// A free-form single label ("" = none). Mirrors the desktop's normalize_collection.
+export function sanitizeCollection(collection: unknown): string {
+  return typeof collection === "string" ? collection.trim().slice(0, 100) : "";
+}
+
 // Parse a route `id` segment as a non-negative integer, or return null. Guards
 // against parseInt's lax coercion, where "1e2" -> 1 and "7abc" -> 7 would
 // otherwise target the wrong row.

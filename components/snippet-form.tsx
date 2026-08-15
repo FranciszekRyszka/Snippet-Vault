@@ -22,10 +22,13 @@ type SnippetFormProps = {
     kind: SnippetKind;
     color: string;
     template: boolean;
+    collection: string;
   }) => void;
   onCancel: () => void;
   saving: boolean;
   allTags?: string[];
+  // Existing collection names, offered as autocomplete suggestions.
+  allCollections?: string[];
   // Whether this is an edit vs. a create. Defaults to `!!snippet`, but a
   // "New from template" flow passes a seed `snippet` while forcing create
   // labeling/behavior with `isEditing={false}`.
@@ -38,6 +41,7 @@ export function SnippetForm({
   onCancel,
   saving,
   allTags = [],
+  allCollections = [],
   isEditing: isEditingProp,
 }: SnippetFormProps) {
   const [title, setTitle] = useState("");
@@ -48,6 +52,7 @@ export function SnippetForm({
   const [kind, setKind] = useState<SnippetKind>("prompt");
   const [color, setColor] = useState<string>("");
   const [template, setTemplate] = useState(false);
+  const [collection, setCollection] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -75,6 +80,7 @@ export function SnippetForm({
       setKind(snippet.kind || "prompt");
       setColor(snippet.color || "");
       setTemplate(snippet.template || false);
+      setCollection(snippet.collection || "");
       setTags(snippet.tags || []);
     } else {
       setTitle("");
@@ -85,6 +91,7 @@ export function SnippetForm({
       setKind("prompt");
       setColor("");
       setTemplate(false);
+      setCollection("");
       setTags([]);
     }
     setTagInput("");
@@ -164,6 +171,7 @@ export function SnippetForm({
       kind,
       color,
       template,
+      collection: collection.trim(),
     });
   };
 
@@ -353,6 +361,33 @@ export function SnippetForm({
             <datalist id="model-suggestions">
               {MODEL_SUGGESTIONS.map((m) => (
                 <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+
+          <div>
+            <label
+              htmlFor="snippet-collection"
+              className="mb-1.5 block text-sm font-medium text-foreground"
+            >
+              Collection{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional — a folder to group by)
+              </span>
+            </label>
+            <input
+              id="snippet-collection"
+              type="text"
+              value={collection}
+              onChange={(e) => setCollection(e.target.value)}
+              list="collection-suggestions"
+              maxLength={100}
+              placeholder="e.g. Work, Marketing, Personal…"
+              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <datalist id="collection-suggestions">
+              {allCollections.map((c) => (
+                <option key={c} value={c} />
               ))}
             </datalist>
           </div>

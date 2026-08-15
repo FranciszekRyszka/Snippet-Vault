@@ -687,6 +687,15 @@ components:
       maxLength: 64
       default: ""
 
+    Collection:
+      type: string
+      description: >
+        Collection (folder) label used to group the library ("" = none). A single
+        free-form value; trimmed and length-capped (100 chars) on write. Carried
+        through sync and export/import like other metadata.
+      maxLength: 100
+      default: ""
+
     Snippet:
       type: object
       description: A prompt/snippet entry as returned by the API.
@@ -748,6 +757,8 @@ components:
           $ref: "#/components/schemas/Template"
         last_device:
           $ref: "#/components/schemas/LastDevice"
+        collection:
+          $ref: "#/components/schemas/Collection"
         copy_count:
           type: integer
           minimum: 0
@@ -792,6 +803,8 @@ components:
           $ref: "#/components/schemas/Color"
         template:
           $ref: "#/components/schemas/Template"
+        collection:
+          $ref: "#/components/schemas/Collection"
 
     SnippetRestore:
       type: object
@@ -829,6 +842,8 @@ components:
           $ref: "#/components/schemas/Template"
         last_device:
           $ref: "#/components/schemas/LastDevice"
+        collection:
+          $ref: "#/components/schemas/Collection"
         copy_count:
           type: integer
           minimum: 0
@@ -921,6 +936,8 @@ components:
           $ref: "#/components/schemas/Template"
         last_device:
           $ref: "#/components/schemas/LastDevice"
+        collection:
+          $ref: "#/components/schemas/Collection"
         copy_count:
           type: integer
           minimum: 0

@@ -21,6 +21,8 @@ export type Snippet = {
   template: boolean;
   // Friendly name of the device that last wrote this row ("" = unknown).
   last_device: string;
+  // Collection (folder) this entry belongs to ("" = none). Filtered client-side.
+  collection: string;
   copy_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -37,6 +39,7 @@ export type CreateSnippetInput = {
   kind?: SnippetKind;
   color?: string;
   template?: boolean;
+  collection?: string;
 };
 
 export type UpdateSnippetInput = {
@@ -49,6 +52,7 @@ export type UpdateSnippetInput = {
   kind?: SnippetKind;
   color?: string;
   template?: boolean;
+  collection?: string;
 };
 
 // Check if running in Tauri.

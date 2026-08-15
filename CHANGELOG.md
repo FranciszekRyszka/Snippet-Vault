@@ -13,6 +13,23 @@ ships.
 
 ## [Unreleased]
 
+## [3.6.0] — 2026-08-15
+
+### Added
+- **Collections (folders).** Group your library by assigning each prompt a
+  single free-form **collection** (e.g. `Work`, `Marketing`, `Personal`) in the
+  editor, with autocomplete over the collections you already use. A new
+  **collection filter** in the toolbar narrows the list to one folder, and a
+  prompt&rsquo;s details show its collection. The collection is a sync-safe field
+  (both backends + validation + the sync round-trip) that travels through
+  export/import — like `color`, it&rsquo;s metadata, not part of version history.
+- **Import from ChatGPT.** Drop (or pick) a ChatGPT **data export**
+  (`conversations.json`) and each conversation becomes a prompt — its title plus
+  the first user message as the body — tagged `chatgpt` and filed into a
+  **ChatGPT** collection so the whole import is easy to find and tidy up. Existing
+  JSON / `.md` / `.txt` import is unchanged; duplicate detection still flags
+  imports that match prompts you already have.
+
 ## [3.5.5] — 2026-08-14
 
 ### Added
@@ -553,7 +570,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.5.5...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.6.0...HEAD
+[3.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.5.5...v3.6.0
 [3.5.5]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.4.0...v3.5.5
 [3.4.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.2.0...v3.3.0

@@ -517,7 +517,9 @@ export function SettingsDialog({
               </button>
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Import prompts from a JSON/.md/.txt file, export your whole library
+              Import prompts from a JSON/.md/.txt file — including a{" "}
+              <strong>ChatGPT</strong> data export (
+              <code>conversations.json</code>) — export your whole library
               as <strong>JSON</strong> (re-importable) or a single
               <strong> Markdown</strong> document (readable/portable), or restore
               recently deleted prompts from Trash. You can also drag files onto the

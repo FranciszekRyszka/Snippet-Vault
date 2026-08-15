@@ -260,6 +260,10 @@ export function SnippetDetail({
     ...(snippet.last_device
       ? [{ label: "Last edited on", value: snippet.last_device }]
       : []),
+    // The collection (folder) this prompt belongs to, when set.
+    ...(snippet.collection
+      ? [{ label: "Collection", value: snippet.collection }]
+      : []),
   ];
 
   return (

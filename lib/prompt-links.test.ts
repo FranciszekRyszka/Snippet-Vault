@@ -18,6 +18,7 @@ function snip(partial: Partial<Snippet> & { id: number }): Snippet {
     color: partial.color ?? "",
     template: partial.template ?? false,
     last_device: partial.last_device ?? "",
+    collection: partial.collection ?? "",
     copy_count: 0,
     last_used_at: null,
     created_at: "",

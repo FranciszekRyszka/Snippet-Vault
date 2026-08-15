@@ -48,8 +48,9 @@ import {
 import { runSync, isSyncing } from "@/hooks/use-sync";
 import { getAutoSyncMinutes } from "@/lib/auto-sync";
 import { normalizeForDup } from "@/lib/duplicates";
+import { isChatGPTExport, parseChatGPTExport } from "@/lib/import-chatgpt";
 import { LANGUAGES } from "@/lib/languages";
-import { ArrowDownUp, Cpu, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
+import { ArrowDownUp, Cpu, Folder, ListChecks, Loader2, Tags, Upload, X } from "lucide-react";
 
 // Bottom-center toast stack: newest at the bottom, capped so a burst of exports
 // doesn't cover the screen. Beyond the cap the oldest toast is evicted.
@@ -103,6 +104,8 @@ export function SnippetsDashboard() {
   const [activeTag, setActiveTag] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [activeModel, setActiveModel] = useState("");
+  // Collection (folder) quick-filter, applied client-side over the loaded rows.
+  const [activeCollection, setActiveCollection] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   // Kind quick-filter (client-side over the loaded rows) and the server-side
   // sort order.
@@ -367,6 +370,19 @@ export function SnippetsDashboard() {
     return Array.from(tagSet).sort();
   }, [allSnippets]);
 
+  // Distinct, non-empty collection names across the whole library (for the
+  // filter dropdown and the form's autocomplete), sorted case-insensitively.
+  const collections = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allSnippets) {
+      const c = (s.collection || "").trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }, [allSnippets]);
+
   // Library-wide stats (based on the full, unfiltered collection).
   const stats = useMemo(() => {
     const languages = new Set<string>();
@@ -395,8 +411,18 @@ export function SnippetsDashboard() {
     if (kindFilter !== "all") list = list.filter((s) => s.kind === kindFilter);
     if (favoritesOnly) list = list.filter((s) => s.favorite);
     if (activeModel) list = list.filter((s) => s.model === activeModel);
+    if (activeCollection)
+      list = list.filter((s) => (s.collection || "") === activeCollection);
     return list;
-  }, [snippets, kindFilter, favoritesOnly, activeModel]);
+  }, [snippets, kindFilter, favoritesOnly, activeModel, activeCollection]);
+
+  // If the active collection disappears (its last prompt moved/deleted), drop
+  // the now-empty filter so the list doesn't look mysteriously empty.
+  useEffect(() => {
+    if (activeCollection && !collections.includes(activeCollection)) {
+      setActiveCollection("");
+    }
+  }, [collections, activeCollection]);
 
   // Refs so the once-bound keyboard handler always reads the current list/index.
   const visibleRef = useRef(visible);
@@ -447,6 +473,7 @@ export function SnippetsDashboard() {
     kind: SnippetKind;
     color: string;
     template: boolean;
+    collection: string;
   }) => {
     setSaving(true);
     try {
@@ -515,9 +542,11 @@ export function SnippetsDashboard() {
         tags: rev.tags,
         model: rev.model,
         kind: rev.kind,
-        // Color/template are metadata, not part of version history — keep current.
+        // Color/template/collection are metadata, not part of version history —
+        // keep the current values.
         color: snip.color || "",
         template: snip.template,
+        collection: snip.collection || "",
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -548,6 +577,7 @@ export function SnippetsDashboard() {
         kind: snip.kind,
         color: snip.color,
         template: snip.template,
+        collection: snip.collection,
       });
       setDetailId(null);
       await fetchSnippets();
@@ -615,6 +645,7 @@ export function SnippetsDashboard() {
         kind: snippet.kind,
         color,
         template: snippet.template,
+        collection: snippet.collection || "",
       });
       if (updated === null) {
         throw new Error("This prompt no longer exists — it may have been deleted.");
@@ -743,6 +774,7 @@ export function SnippetsDashboard() {
           kind,
           color: s.color || "",
           template: s.template,
+          collection: s.collection || "",
         });
       } catch (err) {
         console.error("Bulk set-kind failed for", s.id, err);
@@ -786,6 +818,7 @@ export function SnippetsDashboard() {
           kind: s.kind,
           color: s.color || "",
           template: s.template,
+          collection: s.collection || "",
         });
       } catch (err) {
         console.error("Bulk add-tag failed for", s.id, err);
@@ -817,6 +850,7 @@ export function SnippetsDashboard() {
         kind: s.kind || "prompt",
         color: s.color || "",
         template: s.template || false,
+        collection: s.collection || "",
       }));
       const filename = `snipvault-selection-${new Date()
         .toISOString()
@@ -1030,6 +1064,39 @@ export function SnippetsDashboard() {
           const applied = await importLibrary(parsed);
           return { imported: 0, skipped: 0, libraryApplied: applied, duplicates: 0 };
         }
+        // ChatGPT data export (conversations.json): one prompt per conversation
+        // (its first user message), grouped into a "ChatGPT" collection and
+        // tagged so the import is easy to find and tidy up afterwards.
+        if (isChatGPTExport(parsed)) {
+          const prompts = parseChatGPTExport(parsed);
+          let imported = 0;
+          let skipped = 0;
+          let duplicates = 0;
+          for (const p of prompts) {
+            try {
+              await createSnippet({
+                title: p.title,
+                description: "",
+                code: p.body,
+                language: "text",
+                tags: ["chatgpt"],
+                model: "",
+                kind: "prompt",
+                collection: "ChatGPT",
+              });
+              imported++;
+              const norm = normalizeForDup(p.body);
+              if (norm) {
+                if (existingBodies.has(norm)) duplicates++;
+                existingBodies.add(norm);
+              }
+            } catch (convoErr) {
+              console.error("Failed to import a ChatGPT conversation:", convoErr);
+              skipped++;
+            }
+          }
+          return { imported, skipped, libraryApplied: 0, duplicates };
+        }
         const items = Array.isArray(parsed) ? parsed : [parsed];
         const validLanguages = new Set(LANGUAGES.map((l) => l.value));
         let imported = 0;
@@ -1068,6 +1135,8 @@ export function SnippetsDashboard() {
             kind: item.kind === "code" ? "code" : "prompt",
             color: typeof item.color === "string" ? item.color : "",
             template: item.template === true,
+            collection:
+              typeof item.collection === "string" ? item.collection : "",
           };
           try {
             await createSnippet(input);
@@ -1295,7 +1364,8 @@ export function SnippetsDashboard() {
     !!language ||
     !!activeTag ||
     favoritesOnly ||
-    !!activeModel;
+    !!activeModel ||
+    !!activeCollection;
 
   // The current filter combo, for saving/applying "views" (saved searches).
   const currentFilters: ViewFilters = {
@@ -1305,6 +1375,7 @@ export function SnippetsDashboard() {
     activeTag,
     favoritesOnly,
     activeModel,
+    activeCollection,
     kind: kindFilter,
     sort,
   };
@@ -1316,6 +1387,8 @@ export function SnippetsDashboard() {
     setActiveTag(f.activeTag);
     setFavoritesOnly(f.favoritesOnly);
     setActiveModel(f.activeModel);
+    // Older saved views predate collections — coalesce a missing value to "".
+    setActiveCollection(f.activeCollection ?? "");
     setKindFilter(f.kind);
     setSort(f.sort as SortKey);
   };
@@ -1366,7 +1439,7 @@ export function SnippetsDashboard() {
               Drop to import
             </p>
             <p className="text-xs text-muted-foreground">
-              JSON exports merge by id · .md / .txt become new prompts
+              JSON exports merge by id · ChatGPT export · .md / .txt become prompts
             </p>
           </div>
         </div>
@@ -1501,6 +1574,29 @@ export function SnippetsDashboard() {
                 Tags
               </button>
 
+              {/* Collection (folder) filter — only when the library has any. */}
+              {collections.length > 0 && (
+                <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Folder className="h-3.5 w-3.5" />
+                  <span className="sr-only">Filter by collection</span>
+                  <select
+                    value={activeCollection}
+                    onChange={(e) => setActiveCollection(e.target.value)}
+                    className={`max-w-[11rem] rounded-lg border bg-card px-2 py-1 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${
+                      activeCollection ? "border-primary" : "border-border"
+                    }`}
+                    title="Show only prompts in a collection"
+                  >
+                    <option value="">All collections</option>
+                    {collections.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               {/* Saved searches ("views"). */}
               <SavedViews current={currentFilters} onApply={applyView} />
 
@@ -1607,6 +1703,7 @@ export function SnippetsDashboard() {
           }}
           saving={saving}
           allTags={allTags}
+          allCollections={collections}
         />
       )}
 
