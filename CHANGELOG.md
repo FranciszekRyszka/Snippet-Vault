@@ -13,6 +13,17 @@ ships.
 
 ## [Unreleased]
 
+### Security
+- **Next.js 16.2.11 → 16.3.8.** Fixes several advisories in Next.js: SSRF in
+  image optimization, SSG/ISR cache poisoning, and App Router information
+  disclosure. It also pulls in sharp 0.35.5, which has its own security fixes.
+  This affects the sync server; the desktop app is a static export.
+- **Build-time CSS tooling is out of the production dependencies.** Removed the
+  unused `autoprefixer` and moved `tailwindcss-animate` to `devDependencies`, so
+  their dependencies (browserslist, nanoid, postcss-selector-parser, braces, …)
+  no longer end up in the server image. Refreshed the lockfile to pick up patched
+  transitive versions. `pnpm audit --prod` is clean again.
+
 ## [4.0.0] — 2026-08-15
 
 ### Added
