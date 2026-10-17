@@ -1,0 +1,37 @@
+# Weekly dependency update PRs for every toolchain, so advisories caught by the
+# Security audit workflow arrive as ready-to-merge bumps instead of red cron runs.
+# Minor/patch bumps are grouped per ecosystem to keep the PR count down; majors
+# come in separately since they usually need code changes.
+version: 2
+updates:
+  # npm deps (pnpm lockfile) for the Next.js app / sync server.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Rust crates for the Tauri desktop app.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Action versions used in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]
