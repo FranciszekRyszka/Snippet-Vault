@@ -23,6 +23,12 @@ ships.
   their dependencies (browserslist, nanoid, postcss-selector-parser, braces, …)
   no longer end up in the server image. Refreshed the lockfile to pick up patched
   transitive versions. `pnpm audit --prod` is clean again.
+- **Rust dependency advisories.** Updated `h2` (0.4.20), `quinn-proto` (0.11.19)
+  and `rustls` (0.23.46) to fix denial-of-service and TLS handshake advisories.
+  The updater plugin no longer builds its unused `zip` feature, which removes
+  `zip` 4.6.1 and its path-traversal and permission advisories. Update bundles are
+  raw installers or macOS `.tar.gz`, so the feature was never used.
+  `cargo audit` is clean again.
 
 ## [4.0.0] — 2026-08-15
 
