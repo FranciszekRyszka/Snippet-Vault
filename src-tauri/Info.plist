@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged by Tauri into the macOS app bundle's Info.plist. The Local Network
+     usage string lets macOS show its permission prompt when SnipVault connects
+     to a sync server on the LAN (e.g. a Docker host); without it newer macOS
+     versions can deny the connection silently. -->
+<plist version="1.0">
+<dict>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>SnipVault connects to your self-hosted sync server on the local network to sync your prompts and snippets.</string>
+</dict>
+</plist>

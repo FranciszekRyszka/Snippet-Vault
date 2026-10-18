@@ -126,6 +126,14 @@ async function tauriHttpFetch(): Promise<typeof fetch> {
   return mod.fetch as typeof fetch;
 }
 
+// Append the underlying network error to a friendly message, so failures like a
+// macOS Local Network denial or a TLS problem are diagnosable instead of opaque.
+// The HTTP plugin rejects with a plain string from Rust, not an Error.
+function withNetworkCause(message: string, err: unknown): Error {
+  const detail = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return new Error(detail ? `${message} (${detail})` : message);
+}
+
 // Same-origin fetch to the local Next.js API. Web runtime only — the desktop
 // app never reaches here (it uses `invoke`).
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -163,8 +171,8 @@ export async function saveSyncServer(url: string, token: string): Promise<void> 
     res = await doFetch(`${normalized}/api/health`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-  } catch {
-    throw new Error("Couldn't reach the server. Check the URL and that it's running.");
+  } catch (err) {
+    throw withNetworkCause("Couldn't reach the server. Check the URL and that it's running.", err);
   }
   if (res.status === 401) throw new Error("Server rejected the token.");
   if (!res.ok) throw new Error(`Server error (HTTP ${res.status}).`);
@@ -220,8 +228,8 @@ export async function syncNow(): Promise<SyncResult> {
       },
       body: JSON.stringify({ records: local }),
     });
-  } catch {
-    throw new Error("Couldn't reach the sync server.");
+  } catch (err) {
+    throw withNetworkCause("Couldn't reach the sync server.", err);
   }
   if (res.status === 401) throw new Error("Server rejected the token.");
   if (!res.ok) throw new Error(`Sync failed (HTTP ${res.status}).`);

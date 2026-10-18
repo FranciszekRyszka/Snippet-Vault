@@ -13,6 +13,15 @@ ships.
 
 ## [Unreleased]
 
+### Fixed
+- **macOS: can't connect to a sync server on the local network.** The app now
+  declares `NSLocalNetworkUsageDescription`, so newer macOS versions (macOS 27)
+  ask for Local Network permission instead of silently blocking the connection.
+  The connection failed even when the server worked fine from Terminal or a
+  browser.
+- **More useful "Couldn't reach the server" errors.** Sync connection failures
+  now include the underlying network error, not just the generic message.
+
 ### Security
 - **Next.js 16.2.11 → 16.3.8.** Fixes several advisories in Next.js: SSRF in
   image optimization, SSG/ISR cache poisoning, and App Router information
