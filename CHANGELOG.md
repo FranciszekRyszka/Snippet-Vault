@@ -13,6 +13,13 @@ ships.
 
 ## [Unreleased]
 
+### Changed
+- **Sync connection errors explain themselves.** When the app can't reach the
+  sync server, it now checks each step itself (DNS lookup, TCP connect, then the
+  HTTP request with its full error chain) and adds the result to the message.
+  Before, it only showed the generic "error sending request for url". This makes
+  causes like a macOS Local Network denial, a wrong DNS answer, or a proxy visible.
+
 ## [4.0.1] — 2026-10-18
 
 ### Fixed

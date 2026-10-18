@@ -630,6 +630,68 @@ fn get_remote_config() -> Result<Option<RemoteConfig>, String> {
     Ok(Some(remote))
 }
 
+/// Explain why a sync-server request failed, step by step: DNS lookup, a raw TCP
+/// connect to each resolved address, then the HTTP request with its full error
+/// chain. The HTTP plugin's own error is just "error sending request for url",
+/// which hides the cause (e.g. a macOS Local Network denial shows up here as
+/// "No route to host"). Returns a single human-readable line; never fails.
+#[tauri::command]
+async fn diagnose_connection(url: String) -> String {
+    use std::error::Error as _;
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+
+    let parsed = match tauri::Url::parse(&url) {
+        Ok(u) => u,
+        Err(e) => return format!("invalid URL: {e}"),
+    };
+    let host = parsed.host_str().unwrap_or_default().to_string();
+    let port = parsed.port_or_known_default().unwrap_or(80);
+
+    // DNS + TCP are blocking std calls; keep them off the async runtime threads.
+    let net = tauri::async_runtime::spawn_blocking(move || {
+        let addrs: Vec<_> = match (host.as_str(), port).to_socket_addrs() {
+            Ok(a) => a.collect(),
+            Err(e) => return vec![format!("DNS {host}: {e}")],
+        };
+        if addrs.is_empty() {
+            return vec![format!("DNS {host}: no addresses")];
+        }
+        addrs
+            .iter()
+            .map(|addr| match TcpStream::connect_timeout(addr, Duration::from_secs(5)) {
+                Ok(_) => format!("TCP {addr}: ok"),
+                Err(e) => format!("TCP {addr}: {e}"),
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_else(|e| vec![format!("diagnostic task failed: {e}")]);
+
+    let http = match tauri_plugin_http::reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(client) => match client.get(&url).send().await {
+            Ok(res) => format!("HTTP: {}", res.status()),
+            Err(e) => {
+                let mut chain = format!("HTTP: {e}");
+                let mut source = e.source();
+                while let Some(cause) = source {
+                    chain.push_str(&format!(": {cause}"));
+                    source = cause.source();
+                }
+                chain
+            }
+        },
+        Err(e) => format!("HTTP client: {e}"),
+    };
+
+    let mut parts = net;
+    parts.push(http);
+    parts.join(" · ")
+}
+
 /// Save the sync server to use. `url` is normalized (trailing slash trimmed).
 /// The token goes to the OS credential store; only the URL is written to
 /// config.json (with the token blanked) unless no store is available, in which
@@ -1113,6 +1175,7 @@ pub fn run() {
             restore_from_backup,
             open_backups_dir,
             get_remote_config,
+            diagnose_connection,
             set_remote_config,
             clear_remote_config,
             get_all_for_sync,

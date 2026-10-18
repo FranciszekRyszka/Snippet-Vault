@@ -128,10 +128,19 @@ async function tauriHttpFetch(): Promise<typeof fetch> {
 
 // Append the underlying network error to a friendly message, so failures like a
 // macOS Local Network denial or a TLS problem are diagnosable instead of opaque.
-// The HTTP plugin rejects with a plain string from Rust, not an Error.
-function withNetworkCause(message: string, err: unknown): Error {
+// The HTTP plugin rejects with a plain string from Rust, not an Error, and that
+// string hides the root cause — so also run the step-by-step Rust diagnostic
+// (DNS → TCP → HTTP error chain) against the same URL.
+async function withNetworkCause(message: string, err: unknown, url: string): Promise<Error> {
   const detail = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  return new Error(detail ? `${message} (${detail})` : message);
+  let diagnosis = "";
+  try {
+    diagnosis = await invoke<string>("diagnose_connection", { url });
+  } catch {
+    // Diagnostic unavailable; the plugin's message is still shown.
+  }
+  const extra = [detail, diagnosis].filter(Boolean).join(" — ");
+  return new Error(extra ? `${message} (${extra})` : message);
 }
 
 // Same-origin fetch to the local Next.js API. Web runtime only — the desktop
@@ -172,7 +181,11 @@ export async function saveSyncServer(url: string, token: string): Promise<void> 
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch (err) {
-    throw withNetworkCause("Couldn't reach the server. Check the URL and that it's running.", err);
+    throw await withNetworkCause(
+      "Couldn't reach the server. Check the URL and that it's running.",
+      err,
+      `${normalized}/api/health`,
+    );
   }
   if (res.status === 401) throw new Error("Server rejected the token.");
   if (!res.ok) throw new Error(`Server error (HTTP ${res.status}).`);
@@ -229,7 +242,7 @@ export async function syncNow(): Promise<SyncResult> {
       body: JSON.stringify({ records: local }),
     });
   } catch (err) {
-    throw withNetworkCause("Couldn't reach the sync server.", err);
+    throw await withNetworkCause("Couldn't reach the sync server.", err, `${server.url}/api/sync`);
   }
   if (res.status === 401) throw new Error("Server rejected the token.");
   if (!res.ok) throw new Error(`Sync failed (HTTP ${res.status}).`);
