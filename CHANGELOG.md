@@ -13,6 +13,8 @@ ships.
 
 ## [Unreleased]
 
+## [4.0.2] — 2026-10-18
+
 ### Changed
 - **Sync connection errors explain themselves.** When the app can't reach the
   sync server, it now checks each step itself (DNS lookup, TCP connect, then the
@@ -650,7 +652,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.1...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.2...HEAD
+[4.0.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.6.0...v4.0.0
 [3.6.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.5.5...v3.6.0
