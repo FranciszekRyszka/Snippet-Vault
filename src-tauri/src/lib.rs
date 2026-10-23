@@ -151,7 +151,16 @@ fn load_config() -> AppConfig {
 fn save_config(cfg: &AppConfig) -> Result<(), String> {
     std::fs::create_dir_all(app_dir()).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(config_path(), json).map_err(|e| e.to_string())
+    std::fs::write(config_path(), json).map_err(|e| e.to_string())?;
+    // Owner-only on Unix: the file can hold the sync token when no OS keyring is
+    // available (the fallback in set_remote_config), so other local users
+    // mustn't be able to read it. Windows profile dirs are already per-user.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(config_path(), std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 /// Open a database at `path`, store it in state, and remember the path in config.

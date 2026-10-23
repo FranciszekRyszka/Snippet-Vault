@@ -63,6 +63,8 @@ cat > .env <<EOF
 SNIPVAULT_TOKEN=$TOKEN
 SNIPVAULT_PORT=$PORT
 EOF
+# umask only applies when the file is created; tighten a pre-existing .env too.
+chmod 600 .env
 umask 022
 
 cat > docker-compose.yml <<'EOF'

@@ -48,6 +48,12 @@ describe("parseInline", () => {
     );
   });
 
+  it("strips a javascript: link hidden behind control characters", () => {
+    // Browsers drop tabs/newlines inside a scheme, so this is still javascript:.
+    expect(inlineToString(parseInline("[click](java\tscript:evil)"))).toBe("click");
+    expect(inlineToString(parseInline("[click](\u0001javascript:evil)"))).toBe("click");
+  });
+
   it("leaves prompt variables untouched", () => {
     expect(inlineToString(parseInline("Hello {{name}}, welcome"))).toBe(
       "Hello {{name}}, welcome"

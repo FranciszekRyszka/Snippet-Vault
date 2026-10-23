@@ -126,6 +126,26 @@ test("rate-limits repeated bad-token attempts with a 429", async () => {
   assert.ok(blocked.headers.get("retry-after"), "429 carries a Retry-After");
 });
 
+test("rate limit can't be dodged by rotating a forged x-forwarded-for prefix", async () => {
+  if (!TOKEN) return;
+  // A reverse proxy appends the real client address, so the client controls
+  // only the leading entries. Rotating those must not yield a fresh bucket.
+  const realIp = "198.51.100." + Math.floor(Math.random() * 200 + 1);
+  const bad = (i) =>
+    fetch(`${BASE}/api/health`, {
+      headers: {
+        Authorization: "Bearer wrong-token",
+        "x-forwarded-for": `10.0.0.${i}, ${realIp}`,
+      },
+    });
+  for (let i = 0; i < 5; i++) {
+    const res = await bad(i);
+    assert.equal(res.status, 401, `attempt ${i + 1} should be a plain 401`);
+  }
+  const blocked = await bad(99);
+  assert.equal(blocked.status, 429, "a forged leading hop must not reset the limit");
+});
+
 test("create defaults kind to prompt and returns a uuid", async () => {
   const { status, body } = await create({ title: "test create" });
   assert.equal(status, 201);
@@ -329,6 +349,12 @@ test("sort orders by the requested key, with a safe fallback", async () => {
   });
   assert.equal(bad.status, 200);
   assert.equal(only(bad).length, 2, "garbage sort falls back safely");
+
+  // Object.prototype keys must not resolve as sort fragments either.
+  for (const key of ["constructor", "toString", "__proto__"]) {
+    const proto = await api(`/api/snippets?sort=${key}&tag=${tag}`, { headers: auth });
+    assert.equal(proto.status, 200, `sort=${key} falls back instead of erroring`);
+  }
 });
 
 test("tag rewrite renames, merges, and deletes across the library", async () => {

@@ -127,15 +127,18 @@ const authFailures = createRateLimiter({
   windowMs: RATE_WINDOW_MS,
 });
 
-// Best-effort client identity for rate-limiting: the first x-forwarded-for hop.
-// A reverse proxy in front (see the Caddy profile in docker-compose.yml) sets
-// this; without it every caller shares one "global" bucket, which still bounds
+// Best-effort client identity for rate-limiting: the LAST x-forwarded-for hop.
+// A reverse proxy in front (nginx `$proxy_add_x_forwarded_for`, Caddy, Traefik)
+// appends the address it actually saw, so the rightmost entry is the one the
+// client can't forge. The leftmost entries are whatever the client sent — keying
+// on those let an attacker rotate the header and get a fresh bucket per guess.
+// Without a proxy every caller shares one "global" bucket, which still bounds
 // the total guess rate.
 function clientKey(request: NextRequest): string {
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0].trim();
-    if (first) return first;
+    const last = xff.split(",").pop()?.trim();
+    if (last) return last;
   }
   return "global";
 }

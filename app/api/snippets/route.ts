@@ -83,7 +83,9 @@ export async function GET(request: Request) {
     // Pinned (favorite) snippets float to the top; the rest of the order depends
     // on the requested sort (default newest-first). Unknown keys fall back safely.
     const sort = searchParams.get("sort") || "recent";
-    query += ` ORDER BY ${SORT_ORDER[sort] ?? SORT_ORDER.recent}`;
+    // Own keys only: a bare lookup would resolve "constructor"/"toString" from
+    // Object.prototype and splice a function's source into the SQL (a 500).
+    query += ` ORDER BY ${Object.hasOwn(SORT_ORDER, sort) ? SORT_ORDER[sort] : SORT_ORDER.recent}`;
 
     const stmt = db.prepare(query);
     const rows = stmt.all(...params) as Record<string, unknown>[];

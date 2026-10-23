@@ -40,8 +40,13 @@ const FENCE_RE = /^(```+|~~~+)\s*([\w.+#-]*)\s*$/;
 // links (relative paths, #anchors) are passed through unchanged.
 function safeHref(href: string): string | null {
   const trimmed = href.trim();
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
-    return /^(https?|mailto):/i.test(trimmed) ? trimmed : null;
+  // Browsers ignore tabs/newlines/control chars inside a URL scheme, so
+  // "java\tscript:" still runs as javascript:. Check the scheme with them
+  // stripped, or such a link would look scheme-less and pass straight through.
+  // eslint-disable-next-line no-control-regex
+  const normalized = trimmed.replace(/[\u0000-\u001F\u007F]/g, "");
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) {
+    return /^(https?|mailto):/i.test(normalized) ? normalized : null;
   }
   return trimmed || null;
 }

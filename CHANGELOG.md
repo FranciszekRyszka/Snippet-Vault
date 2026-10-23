@@ -13,6 +13,26 @@ ships.
 
 ## [Unreleased]
 
+### Security
+- **Next.js 16.3.8 → 16.4.2 (critical).** Fixes two unauthenticated remote code
+  execution advisories (Image Optimization API with SVGs, and `use cache`) and a
+  Server Actions denial of service. Update the sync server image promptly.
+- **Rust TLS certificate validation.** Updated `rustls-webpki` (0.103.16) and
+  `webpki-roots` / `webpki-root-certs` (1.0.11) so distrusted intermediate
+  certificates are no longer accepted.
+- **Brute-force limit can't be dodged with a forged `X-Forwarded-For`.** The sync
+  server now uses the last forwarded hop, which the reverse proxy sets, instead of
+  the first one, which the client controls.
+- **Release pipeline hardening.** Third-party GitHub Actions in the release and
+  server-image workflows are pinned to commit SHAs, and the audit and test
+  workflows run with a read-only token.
+- **Tighter file permissions.** `install.sh` now restricts an existing `.env` to
+  `600`, and on macOS and Linux the desktop app writes `config.json` as
+  owner-only.
+- **Defence in depth.** Markdown links hiding `javascript:` behind control
+  characters are stripped. `?sort=constructor` and similar values no longer cause
+  a 500 error. The server no longer sends `X-Powered-By: Next.js`.
+
 ## [4.0.2] — 2026-10-18
 
 ### Changed

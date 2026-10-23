@@ -11,8 +11,9 @@
 //   * State lives in one Edge isolate. A single-instance homeserver — the whole
 //     target here — shares it across all requests. It is NOT shared across
 //     horizontally-scaled instances (each would keep its own window).
-//   * The key must be a stable client identity. proxy.ts uses the first
-//     x-forwarded-for hop, so a reverse proxy in front must set that header;
+//   * The key must be a stable client identity. proxy.ts uses the last
+//     x-forwarded-for hop (the one the proxy appended, which the client can't
+//     forge), so a reverse proxy in front must set that header;
 //     without it every caller falls into one shared bucket (still bounds the
 //     total guess rate, just more coarsely).
 

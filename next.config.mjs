@@ -11,6 +11,8 @@ const isTauriBuild = process.env.TAURI_BUILD === "true";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(isTauriBuild ? { output: "export" } : {}),
+  // Don't advertise the framework (X-Powered-By: Next.js) on the sync server.
+  poweredByHeader: false,
   images: {
     unoptimized: true,
   },

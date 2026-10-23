@@ -25,6 +25,10 @@ on:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
   workflow_dispatch:
 
+# Read-only token: these jobs only check out and inspect code.
+permissions:
+  contents: read
+
 jobs:
   cargo-audit:
     runs-on: ubuntu-latest
