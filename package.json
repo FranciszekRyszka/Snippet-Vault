@@ -70,7 +70,7 @@
     "react-dom": "^19",
     "react-hook-form": "^7.54.1",
     "react-resizable-panels": "^2.1.7",
-    "sonner": "^1.7.1",
+    "sonner": "^2.0.8",
     "swr": "^2.2.5",
     "tailwind-merge": "^2.5.5",
     "vaul": "^1.1.2",
