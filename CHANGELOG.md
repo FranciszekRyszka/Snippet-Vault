@@ -13,6 +13,8 @@ ships.
 
 ## [Unreleased]
 
+## [4.1.0] — 2026-10-23
+
 ### Security
 - **Next.js 16.3.8 → 16.4.2 (critical).** Fixes two unauthenticated remote code
   execution advisories (Image Optimization API with SVGs, and `use cache`) and a
@@ -672,7 +674,8 @@ no sync-protocol change.
   syntax highlighting, and search — available as a Tauri desktop app and a
   Next.js web app over a shared SQLite schema.
 
-[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.2...HEAD
+[Unreleased]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.2...v4.1.0
 [4.0.2]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/FranciszekRyszka/Snippet-Vault/compare/v3.6.0...v4.0.0
