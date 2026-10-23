@@ -59,8 +59,8 @@ externalDocs:
 servers:
   - url: http://localhost:3000
     description: Local / LAN homeserver (plain HTTP, default)
-  - url: https://{host}
-    description: Behind a TLS-terminating reverse proxy
+  - url: http://{host}
+    description: Reverse proxy / custom host (plain HTTP)
     variables:
       host:
         default: snipvault.example.com
